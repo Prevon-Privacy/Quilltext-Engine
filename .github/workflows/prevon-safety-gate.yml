@@ -1,0 +1,67 @@
+name: Prevon Safety Gate
+
+on:
+  # No branch filter: this is a safety net, not a main-only gate. Omitting
+  # `branches:` means "every branch" for both push and pull_request. A branch
+  # filter would only restrict the workflow, so listing main/fix/initial-sync
+  # would let a leak slip through on any other branch until it reached one of
+  # those. We want it to fire on every push to any branch and every PR
+  # regardless of its base branch.
+  push:
+  pull_request:
+
+jobs:
+  scan-for-leaked-content:
+    name: Scan for secrets and Prevon-PIE fingerprints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks (secret scanner)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+      - name: Scan for Prevon-PIE fingerprints
+        run: |
+          echo "Scanning repository content and history for Prevon-PIE fingerprints..."
+
+          FORBIDDEN='TEMP_DEBUG_|pie_storage|pie_brain|pie_security|pie_network|pie_core|pie_design|Doorman|SQLCipher|Argon2id|sovereign_stack|Prevon-PIE|SovereignTime|CommandBus|Secretary Isolate|Nuclear Meltdown|Ghost Token|LiquidRegistry|pie_notes|PREVON-[0-9]+'
+
+          echo "--- Scanning current working tree ---"
+          # Exclude .github/workflows to avoid false-positive on the scan script's
+          # own FORBIDDEN variable, which necessarily contains all search terms.
+          TREE_HITS=$(grep -rEn "$FORBIDDEN" --exclude-dir=.git --exclude-dir=.github . || true)
+
+          echo "--- Scanning full commit history (all branches/refs in this checkout) ---"
+          # Exclude .github too: the history patch stream includes this workflow
+          # file itself, whose committed FORBIDDEN='...' line would otherwise
+          # match on every run. Same rationale as the tree scan above.
+          HISTORY_HITS=$(git log -p --all -- . ':(exclude).github' | grep -E "$FORBIDDEN" || true)
+
+          if [ -n "$TREE_HITS" ] || [ -n "$HISTORY_HITS" ]; then
+            echo "=================================================="
+            echo "SAFETY GATE FAILED — Prevon-PIE fingerprints found."
+            echo "=================================================="
+            if [ -n "$TREE_HITS" ]; then
+              echo ""
+              echo "Matches in current files:"
+              echo "$TREE_HITS" | head -50
+            fi
+            if [ -n "$HISTORY_HITS" ]; then
+              echo ""
+              echo "Matches in commit history:"
+              echo "$HISTORY_HITS" | head -50
+            fi
+            echo ""
+            echo "This push/PR has been blocked to prevent leaking private"
+            echo "Prevon-PIE code into this public repository. Do not merge"
+            echo "or force past this without understanding exactly why each"
+            echo "match appeared."
+            exit 1
+          fi
+
+          echo "Safety gate passed — no Prevon-PIE fingerprints found."
