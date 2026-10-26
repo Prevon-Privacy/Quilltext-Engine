@@ -1,0 +1,230 @@
+import 'package:prevon_quilltext_engine/prevon_quilltext_engine.dart';
+import 'package:prevon_quilltext_engine/src/editor/block_component/base_component/block_icon_builder.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+class QuoteBlockKeys {
+  const QuoteBlockKeys._();
+
+  static const String type = 'quote';
+
+  static const String delta = blockComponentDelta;
+
+  static const String backgroundColor = blockComponentBackgroundColor;
+
+  static const String textDirection = blockComponentTextDirection;
+}
+
+Node quoteNode({
+  Delta? delta,
+  String? textDirection,
+  Attributes? attributes,
+  Iterable<Node>? children,
+}) {
+  attributes ??= {'delta': (delta ?? Delta()).toJson()};
+  return Node(
+    type: QuoteBlockKeys.type,
+    attributes: {
+      ...attributes,
+      if (textDirection != null) QuoteBlockKeys.textDirection: textDirection,
+    },
+    children: children ?? [],
+  );
+}
+
+class QuoteBlockComponentBuilder extends BlockComponentBuilder {
+  QuoteBlockComponentBuilder({
+    super.configuration,
+    this.iconBuilder,
+    this.tint,
+  });
+
+  final BlockIconBuilder? iconBuilder;
+
+  /// Background wash behind the quote when the block sets no colour of its own.
+  /// Null keeps the original faint cyan (PATCH 20).
+  final Color? tint;
+
+  @override
+  BlockComponentWidget build(BlockComponentContext blockComponentContext) {
+    final node = blockComponentContext.node;
+    return QuoteBlockComponentWidget(
+      key: node.key,
+      node: node,
+      configuration: configuration,
+      iconBuilder: iconBuilder,
+      tint: tint,
+      showActions: showActions(node),
+      actionBuilder: (context, state) => actionBuilder(
+        blockComponentContext,
+        state,
+      ),
+      actionTrailingBuilder: (context, state) => actionTrailingBuilder(
+        blockComponentContext,
+        state,
+      ),
+    );
+  }
+
+  @override
+  BlockComponentValidate get validate => (node) => node.delta != null;
+}
+
+class QuoteBlockComponentWidget extends BlockComponentStatefulWidget {
+  const QuoteBlockComponentWidget({
+    super.key,
+    required super.node,
+    super.showActions,
+    super.actionBuilder,
+    super.actionTrailingBuilder,
+    super.configuration = const BlockComponentConfiguration(),
+    this.iconBuilder,
+    this.tint,
+  });
+
+  final BlockIconBuilder? iconBuilder;
+  final Color? tint;
+
+  @override
+  State<QuoteBlockComponentWidget> createState() =>
+      _QuoteBlockComponentWidgetState();
+}
+
+class _QuoteBlockComponentWidgetState extends State<QuoteBlockComponentWidget>
+    with
+        SelectableMixin,
+        DefaultSelectableMixin,
+        BlockComponentConfigurable,
+        BlockComponentBackgroundColorMixin,
+        BlockComponentTextDirectionMixin,
+        BlockComponentAlignMixin {
+  @override
+  final forwardKey = GlobalKey(debugLabel: 'flowy_rich_text');
+
+  @override
+  GlobalKey<State<StatefulWidget>> get containerKey => widget.node.key;
+
+  @override
+  GlobalKey<State<StatefulWidget>> blockComponentKey = GlobalKey(
+    debugLabel: QuoteBlockKeys.type,
+  );
+
+  @override
+  BlockComponentConfiguration get configuration => widget.configuration;
+
+  @override
+  Node get node => widget.node;
+
+  @override
+  late final editorState = Provider.of<EditorState>(context, listen: false);
+
+  @override
+  Widget build(BuildContext context) {
+    final textDirection = calculateTextDirection(
+      layoutDirection: Directionality.maybeOf(context),
+    );
+
+    Widget child = Container(
+      alignment: alignment,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisAlignment: MainAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          textDirection: textDirection,
+          children: [
+            widget.iconBuilder != null
+                ? widget.iconBuilder!(context, node)
+                : const _QuoteIcon(),
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsets.only(right: 10),
+                child: AppFlowyRichText(
+                  key: forwardKey,
+                  delegate: this,
+                  node: widget.node,
+                  editorState: editorState,
+                  textAlign: alignment?.toTextAlign ?? textAlign,
+                  placeholderText: placeholderText,
+                  textSpanDecorator: (textSpan) => textSpan.updateTextStyle(
+                    textStyleWithTextSpan(textSpan: textSpan),
+                  ),
+                  placeholderTextSpanDecorator: (textSpan) =>
+                      textSpan.updateTextStyle(
+                    placeholderTextStyleWithTextSpan(textSpan: textSpan),
+                  ),
+                  textDirection: textDirection,
+                  cursorColor: editorState.editorStyle.cursorColor,
+                  selectionColor: editorState.editorStyle.selectionColor,
+                  cursorWidth: editorState.editorStyle.cursorWidth,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // Telegram-style tint: faint blue wash unless the block sets its own color.
+    child = Container(
+      decoration: decoration ??
+          BoxDecoration(
+            color: widget.tint ?? const Color(0x1A00BCF0),
+            borderRadius: const BorderRadius.all(Radius.circular(4)),
+          ),
+      clipBehavior: Clip.antiAlias,
+      key: blockComponentKey,
+      padding: padding,
+      child: child,
+    );
+
+    // Hug the text instead of spanning the full line width.
+    child = Align(
+      alignment: AlignmentDirectional.centerStart,
+      child: child,
+    );
+
+    child = BlockSelectionContainer(
+      node: node,
+      delegate: this,
+      listenable: editorState.selectionNotifier,
+      remoteSelection: editorState.remoteSelections,
+      blockColor: editorState.editorStyle.selectionColor,
+      supportTypes: const [
+        BlockSelectionType.block,
+      ],
+      child: child,
+    );
+
+    if (widget.showActions && widget.actionBuilder != null) {
+      child = BlockComponentActionWrapper(
+        node: node,
+        actionBuilder: widget.actionBuilder!,
+        actionTrailingBuilder: widget.actionTrailingBuilder,
+        child: child,
+      );
+    }
+
+    return child;
+  }
+}
+
+class _QuoteIcon extends StatelessWidget {
+  const _QuoteIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    final textScaleFactor =
+        context.read<EditorState>().editorStyle.textScaleFactor;
+    return Container(
+      alignment: Alignment.center,
+      constraints:
+          const BoxConstraints(minWidth: 26, minHeight: 22) * textScaleFactor,
+      padding: const EdgeInsets.only(right: 4.0),
+      child: Container(
+        width: 4 * textScaleFactor,
+        color: '#00BCF0'.tryToColor(),
+      ),
+    );
+  }
+}
