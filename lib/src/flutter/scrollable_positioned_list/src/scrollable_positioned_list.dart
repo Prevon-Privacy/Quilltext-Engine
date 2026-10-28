@@ -57,6 +57,8 @@ class ScrollablePositionedList extends StatefulWidget {
     this.padding,
     this.addSemanticIndexes = true,
     this.addAutomaticKeepAlives = true,
+    this.itemId,
+    this.indexOfItemId,
     this.addRepaintBoundaries = true,
     this.minCacheExtent,
   })  : itemPositionsNotifier = itemPositionsListener as ItemPositionsNotifier?,
@@ -84,6 +86,8 @@ class ScrollablePositionedList extends StatefulWidget {
     this.padding,
     this.addSemanticIndexes = true,
     this.addAutomaticKeepAlives = true,
+    this.itemId,
+    this.indexOfItemId,
     this.addRepaintBoundaries = true,
     this.minCacheExtent,
   })  : assert(separatorBuilder != null),
@@ -166,6 +170,12 @@ class ScrollablePositionedList extends StatefulWidget {
   ///
   /// See [SliverChildBuilderDelegate.addAutomaticKeepAlives].
   final bool addAutomaticKeepAlives;
+
+  /// See [PositionedList.itemId].
+  final Object? Function(int index)? itemId;
+
+  /// See [PositionedList.indexOfItemId].
+  final int? Function(Object id)? indexOfItemId;
 
   /// Whether to wrap each child in a [RepaintBoundary].
   ///
@@ -454,6 +464,8 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
                       padding: widget.padding,
                       addAutomaticKeepAlives: widget.addAutomaticKeepAlives,
                       addRepaintBoundaries: widget.addRepaintBoundaries,
+                      itemId: widget.itemId,
+                      indexOfItemId: widget.indexOfItemId,
                     ),
                   ),
                 ),
@@ -484,6 +496,8 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
                         padding: widget.padding,
                         addAutomaticKeepAlives: widget.addAutomaticKeepAlives,
                         addRepaintBoundaries: widget.addRepaintBoundaries,
+                        itemId: widget.itemId,
+                        indexOfItemId: widget.indexOfItemId,
                       ),
                     ),
                   ),

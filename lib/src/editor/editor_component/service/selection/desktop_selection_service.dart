@@ -264,8 +264,12 @@ class _DesktopSelectionServiceWidgetState
     final position = selectable.getPositionInOffset(offset);
     final Selection? selection;
 
-    if (HardwareKeyboard.instance.isShiftPressed && _panStartPosition != null) {
-      selection = Selection(start: _panStartPosition!, end: position);
+    // PREVON PATCH 27: shift+click extends from the live selection's anchor, not
+    // the last tap/drag start (stale after keyboard moves or word picks).
+    final shiftAnchor = _shiftAnchor();
+    if (shiftAnchor != null) {
+      selection = Selection(start: shiftAnchor, end: position);
+      _panStartPosition = shiftAnchor;
     } else {
       selection = selectable.cursorStyle == CursorStyle.verticalLine
           ? Selection.collapsed(position)
@@ -284,6 +288,11 @@ class _DesktopSelectionServiceWidgetState
     }
   }
 
+  Position? _shiftAnchor() {
+    if (!HardwareKeyboard.instance.isShiftPressed) return null;
+    return editorState.selection?.start ?? _panStartPosition;
+  }
+
   void _onDoubleTapDown(TapDownDetails details) {
     final canDoubleTap = _interceptors.every(
       (interceptor) => interceptor.canDoubleTap?.call(details) ?? true,
@@ -295,6 +304,13 @@ class _DesktopSelectionServiceWidgetState
 
     final offset = details.globalPosition;
     final node = getNodeInOffset(offset);
+    final shiftAnchor = _shiftAnchor();
+    if (shiftAnchor != null) {
+      final p = node?.selectable?.getPositionInOffset(offset);
+      if (p != null) {
+        return updateSelection(Selection(start: shiftAnchor, end: p));
+      }
+    }
     final selection = node?.selectable?.getWordBoundaryInOffset(offset);
     if (selection == null) {
       clearSelection();
@@ -317,6 +333,15 @@ class _DesktopSelectionServiceWidgetState
     if (selectable == null) {
       clearSelection();
       return;
+    }
+    final shiftAnchor = _shiftAnchor();
+    if (shiftAnchor != null) {
+      return updateSelection(
+        Selection(
+          start: shiftAnchor,
+          end: selectable.getPositionInOffset(offset),
+        ),
+      );
     }
     final selection = tripleTapSelection(node!, selectable, offset);
     updateSelection(selection);
@@ -373,6 +398,9 @@ class _DesktopSelectionServiceWidgetState
   }
 
   void _onPanStart(DragStartDetails details) {
+    // PREVON PATCH 27: shift+drag keeps the selection's anchor and moves only
+    // its far end (read before clearSelection wipes it).
+    final shiftAnchor = _shiftAnchor();
     clearSelection();
 
     final canPanStart = _interceptors.every(
@@ -386,9 +414,10 @@ class _DesktopSelectionServiceWidgetState
     _panStartOffset = details.globalPosition;
     _panStartScrollDy = editorState.service.scrollService?.dy;
 
-    _panStartPosition = getNodeInOffset(_panStartOffset!)
-        ?.selectable
-        ?.getPositionInOffset(_panStartOffset!);
+    _panStartPosition = shiftAnchor ??
+        getNodeInOffset(_panStartOffset!)
+            ?.selectable
+            ?.getPositionInOffset(_panStartOffset!);
     if (_panStartPosition == null) {
       _resetPanState();
       return;

@@ -590,30 +590,46 @@ class _TodoListBlockComponentWidgetState
   StreamSubscription<EditorTransactionValue>? _runViewSub;
   Object? _runViewSig;
 
+  /// What this row draws that follows its siblings: whether it opens the
+  /// completed pile (and its divider), sits inside it, or neither, plus the
+  /// pile's count and folded state. The absolute index is NOT part of it: an
+  /// insert above shifts every index but changes nothing a row draws, and
+  /// comparing it rebuilt every row below the insert (PREVON PATCH 30).
   Object? _runViewSignature() {
     final v = todoCompletedGroupView(node);
     if (v == null) return null;
-    return (
-      node.path.last,
-      v.completedStart,
-      v.completedCount,
-      v.collapsed,
-      v.end
-    );
+    final idx = node.path.last;
+    final role = v.completedStart < 0
+        ? 0
+        : idx == v.completedStart
+            ? 1
+            : (idx > v.completedStart && idx <= v.end)
+                ? 2
+                : 0;
+    return (role, v.completedCount, v.collapsed);
   }
 
   @override
   void initState() {
     super.initState();
     _runViewSig = _runViewSignature();
-    _runViewSub = editorState.transactionStream.listen((_) {
-      if (!mounted) return;
+    _runViewSub = editorState.transactionStream.listen((event) {
+      if (!mounted || !_mayChangeRunView(event)) return;
       final sig = _runViewSignature();
       if (sig != _runViewSig) {
         _runViewSig = sig;
         setState(() {});
       }
     });
+  }
+
+  /// A transaction can change the run view only after it has been applied, and
+  /// only by structure or attributes (rows added, removed, moved, ticked or
+  /// folded), never by typing. Every visible row listens to every transaction,
+  /// so skipping the other cases saves one run walk per row per keystroke.
+  bool _mayChangeRunView(EditorTransactionValue event) {
+    if (event.$1 == TransactionTime.before) return false;
+    return event.$2.operations.any((op) => op is! UpdateTextOperation);
   }
 
   @override

@@ -74,24 +74,46 @@ class _BlockSelectionAreaState extends State<BlockSelectionArea> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _updateSelectionIfNeeded();
     });
-    widget.listenable.addListener(_clearCursorRect);
+    _wasInSelection = _isInSelection();
+    widget.listenable.addListener(_onSelectionChanged);
   }
 
   @override
   void dispose() {
-    widget.listenable.removeListener(_clearCursorRect);
+    widget.listenable.removeListener(_onSelectionChanged);
 
     super.dispose();
   }
 
+  // PREVON PATCH: every visible block holds one or more of these, and the
+  // selection notifier fires on every keystroke. Upstream rebuilt all of them
+  // each time (hundreds of builders per key in a long note) although only the
+  // blocks the selection touches can draw anything. A block now rebuilds only
+  // when it was in the selection or is in it now.
+  bool _wasInSelection = false;
+
+  bool _isInSelection() {
+    final selection = widget.listenable.value?.normalized;
+    return selection != null && widget.node.path.inSelection(selection);
+  }
+
+  void _onSelectionChanged() {
+    _clearCursorRect();
+    final nowIn = _isInSelection();
+    final relevant = nowIn || _wasInSelection;
+    _wasInSelection = nowIn;
+    if (relevant && mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder(
+    return KeyedSubtree(
       key: ValueKey(widget.node.id + widget.supportTypes.toString()),
-      valueListenable: widget.listenable,
-      builder: ((context, value, child) {
-        final sizedBox = child ?? const SizedBox.shrink();
-        final selection = value?.normalized;
+      child: Builder(builder: (context) {
+        const sizedBox = SizedBox.shrink();
+        final selection = widget.listenable.value?.normalized;
 
         if (selection == null) {
           return sizedBox;
@@ -161,7 +183,6 @@ class _BlockSelectionAreaState extends State<BlockSelectionArea> {
           );
         }
       }),
-      child: const SizedBox.shrink(),
     );
   }
 

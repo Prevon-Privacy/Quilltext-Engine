@@ -131,9 +131,14 @@ class _ParagraphBlockComponentWidgetState
     final selection = editorState.selection;
 
     if (widget.showPlaceholder != null) {
-      setState(() {
-        _showPlaceholder = widget.showPlaceholder!(editorState, node);
-      });
+      // PREVON PATCH: every paragraph listens, and a selection change fires on
+      // every keystroke. Rebuilding all of them each time is O(blocks); a block
+      // that shows no hint now and showed none before has nothing to redraw.
+      // A block that shows one rebuilds still: its hint text depends on focus.
+      final show = widget.showPlaceholder!(editorState, node);
+      if (show || _showPlaceholder) {
+        setState(() => _showPlaceholder = show);
+      }
     } else {
       final showPlaceholder = selection != null &&
           (selection.isSingle && selection.start.path.equals(node.path));

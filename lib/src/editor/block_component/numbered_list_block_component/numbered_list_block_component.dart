@@ -246,6 +246,11 @@ class _NumberedListIcon extends StatelessWidget {
   }
 }
 
+/// The marker a numbered item shows ("3.", "b.", "iv."). It is the only thing
+/// in the item's rendering that follows its siblings and ancestors, so a host
+/// that reuses a built item (the page list) compares it to know when to rebuild.
+String numberedListLabel(Node node) => node.levelString;
+
 extension on Node {
   String get levelString {
     final builder = _NumberedListIconBuilder(node: this);

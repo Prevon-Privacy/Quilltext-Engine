@@ -298,3 +298,41 @@ PATCH 25: `TodoListBlockComponentBuilder(labelVerticalInset:)` (todo_list_block_
 label INSIDE the row (the label is wrapped in a vertical Padding, and the desktop drag grip becomes a box as tall as the first line plus that inset), so the
 host can give the row zero block padding and still make the checkbox tap slot taller than the first line (a child is only hit-tested inside its parent bounds).
 Row height is unchanged. Null keeps the stock rendering. Host: `note_block_components.dart` (`noteChecklistRowInset`).
+
+PATCH 27: shift+click / shift+double-click / shift+triple-click / shift+drag (desktop_selection_service.dart). The selection now extends from the live
+selection's anchor (`editorState.selection.start`), not from the last tap or drag start, which went stale after keyboard moves and word/paragraph picks and
+made the range jump. Shift+double and shift+triple click extend instead of replacing the selection with a word or paragraph. Test:
+`test/editor/shift_click_selection_test.dart`.
+
+### Patch 29: a keystroke no longer rebuilds every visible block (typing lag)
+**Files:** `block_component/paragraph_block_component/paragraph_block_component.dart`, `block_component/base_component/selection/block_selection_area.dart`
+
+A keystroke moves the caret, so the selection notifier fires on every key, and two listeners fanned that out to every built block:
+(1) a paragraph with a host `showPlaceholder` hook called `setState` unconditionally (the app wires one), re-laying out every paragraph's text;
+(2) every `BlockSelectionArea` was a `ValueListenableBuilder` that rebuilt although only blocks in the selection can draw anything.
+Now (1) rebuilds only when the block shows, or just stopped showing, a hint, and (2) rebuilds only when the block was in or is now in the selection.
+Measured on 300 paragraphs: 1902 rebuilt widgets and 30 ms per key before, 24 and 3 ms after. Test: `test/editor/typing_rebuild_budget_test.dart`.
+
+### Patch 29b: adding or removing a block no longer rebuilds the blocks below it (Enter lag)
+**Files:** `editor_component/entry/page_block_component.dart`, `flutter/scrollable_positioned_list/src/{positioned_list,scrollable_positioned_list}.dart`
+
+The page list keyed each slot by its INDEX, so inserting a block shifted every block below it into another slot and Flutter
+re-parented and rebuilt all of them (about 6400 widgets and 200 ms per Enter on a 300-block test note, debug host).
+(1) `PositionedList` takes optional `itemId` / `indexOfItemId`; the slot key (`_ItemKey`) is matched by the item's identity and carries
+its current index, and each sliver delegate gets a `findChildIndexCallback`, so a moved item keeps its element. Without them the key is
+the index, as upstream (`.separated` lists ignore them). (2) The page passes the block's `Node` as identity (header/footer have fixed ids).
+(3) Paragraph, heading and quote items are reused as the same widget instance (`_stableItems`, checked against the editor state, style,
+renderer and wrapper), so Flutter skips them. Bullets are reused too (they follow only their ancestors); a numbered item is reused while
+its marker (`numberedListLabel`) is unchanged, so an insert rebuilds only the items whose number moved. Checklist rows are NOT reused:
+they follow their completed group. Now about 1300 widgets per Enter in text and bullets (the slot wrappers). Tests:
+`test/editor/typing_rebuild_budget_test.dart` (budget, content kept, numbered list still renumbers).
+
+### Patch 30: checklist and numbered rows are reused too; checklist rows stop rebuilding on typing
+**Files:** `todo_list_block_component/todo_list_block_component.dart`, `numbered_list_block_component/numbered_list_block_component.dart`, `editor_component/entry/page_block_component.dart`
+
+A checklist row already rebuilds itself when its run view changes, so the page-level rebuild was redundant. Its signature held the row's
+ABSOLUTE index, which shifts on every insert above and rebuilt every row below. It is now `(role, completedCount, collapsed)` where role is
+before-pile / pile-start / inside-pile (`idx` is only ever compared with the pile start in `build`). The row's transaction listener also
+skips `TransactionTime.before` and text-only transactions (one run walk per visible row per keystroke saved). Checklist items join
+`_stableItemTypes`; numbered items join it with their marker (`numberedListLabel`) as the extra reuse condition. Guide:
+`docs/guides/editor-performance.md`. Tests: `test/editor/typing_rebuild_budget_test.dart`, `todo_completed_divider_test.dart`.

@@ -46,7 +46,19 @@ class PositionedList extends StatefulWidget {
     this.addSemanticIndexes = true,
     this.addRepaintBoundaries = true,
     this.addAutomaticKeepAlives = true,
+    this.itemId,
+    this.indexOfItemId,
   }) : assert((positionedIndex == 0) || (positionedIndex < itemCount));
+
+  /// PREVON PATCH: a stable identity for the item at an index (the block's
+  /// node). With [indexOfItemId] (its inverse) an item that moves to another
+  /// index keeps its element, so inserting or removing an item above a long
+  /// stretch of items no longer rebuilds each of them. Unused with a
+  /// [separatorBuilder]. Without them the slot is keyed by its index, as upstream.
+  final Object? Function(int index)? itemId;
+
+  /// The index that currently holds the item with [itemId], or null.
+  final int? Function(Object id)? indexOfItemId;
 
   /// Number of items the [itemBuilder] can produce.
   final int itemCount;
@@ -195,6 +207,10 @@ class _PositionedListState extends State<PositionedList> {
                     childCount: widget.separatorBuilder == null
                         ? widget.positionedIndex
                         : 2 * widget.positionedIndex,
+                    findChildIndexCallback: _finder(
+                      (i) => widget.positionedIndex - 1 - i,
+                      widget.positionedIndex,
+                    ),
                     addSemanticIndexes: false,
                     addRepaintBoundaries: widget.addRepaintBoundaries,
                     addAutomaticKeepAlives: widget.addAutomaticKeepAlives,
@@ -213,6 +229,10 @@ class _PositionedListState extends State<PositionedList> {
                           index + 2 * widget.positionedIndex,
                         ),
                   childCount: widget.itemCount != 0 ? 1 : 0,
+                  findChildIndexCallback: _finder(
+                    (i) => i - widget.positionedIndex,
+                    widget.itemCount != 0 ? 1 : 0,
+                  ),
                   addSemanticIndexes: false,
                   addRepaintBoundaries: widget.addRepaintBoundaries,
                   addAutomaticKeepAlives: widget.addAutomaticKeepAlives,
@@ -237,6 +257,10 @@ class _PositionedListState extends State<PositionedList> {
                     childCount: widget.separatorBuilder == null
                         ? widget.itemCount - widget.positionedIndex - 1
                         : 2 * (widget.itemCount - widget.positionedIndex - 1),
+                    findChildIndexCallback: _finder(
+                      (i) => i - widget.positionedIndex - 1,
+                      widget.itemCount - widget.positionedIndex - 1,
+                    ),
                     addSemanticIndexes: false,
                     addRepaintBoundaries: widget.addRepaintBoundaries,
                     addAutomaticKeepAlives: widget.addAutomaticKeepAlives,
@@ -255,9 +279,23 @@ class _PositionedListState extends State<PositionedList> {
     }
   }
 
+  /// Where an element built for an earlier [_ItemKey] belongs now, in the
+  /// child numbering of one sliver ([toChild] maps an item index to it).
+  int? Function(Key)? _finder(int Function(int itemIndex) toChild, int count) {
+    final lookup = widget.indexOfItemId;
+    if (lookup == null || widget.separatorBuilder != null) return null;
+    return (Key key) {
+      if (key is! _ItemKey) return null;
+      final item = lookup(key.id);
+      if (item == null) return null;
+      final child = toChild(item);
+      return child >= 0 && child < count ? child : null;
+    };
+  }
+
   Widget _buildItem(BuildContext context, int index) {
     return RegisteredElementWidget(
-      key: ValueKey(index),
+      key: _ItemKey(index, widget.itemId?.call(index) ?? index),
       child: widget.addSemanticIndexes
           ? IndexedSemantics(
               index: index,
@@ -342,7 +380,7 @@ class _PositionedListState extends State<PositionedList> {
             anchor = viewport.anchor;
           }
 
-          final ValueKey<int> key = element.widget.key as ValueKey<int>;
+          final _ItemKey key = element.widget.key as _ItemKey;
           // Skip this element if `box` has never been laid out.
           if (!box.hasSize) continue;
           if (widget.scrollDirection == Axis.vertical) {
@@ -352,7 +390,7 @@ class _PositionedListState extends State<PositionedList> {
                 reveal - viewport.offset.pixels + anchor * viewport.size.height;
             positions.add(
               ItemPosition(
-                index: key.value,
+                index: key.index,
                 itemLeadingEdge: itemOffset.round() /
                     scrollController.position.viewportDimension,
                 itemTrailingEdge: (itemOffset + box.size.height).round() /
@@ -365,7 +403,7 @@ class _PositionedListState extends State<PositionedList> {
             if (!itemOffset.isFinite) continue;
             positions.add(
               ItemPosition(
-                index: key.value,
+                index: key.index,
                 itemLeadingEdge: (widget.reverse
                             ? scrollController.position.viewportDimension -
                                 (itemOffset + box.size.width)
@@ -387,4 +425,19 @@ class _PositionedListState extends State<PositionedList> {
       });
     }
   }
+}
+
+/// The key of one list slot: matched by the item's identity, carries its
+/// current index. Without an [itemId] the identity is the index (upstream).
+class _ItemKey extends LocalKey {
+  const _ItemKey(this.index, this.id);
+
+  final int index;
+  final Object id;
+
+  @override
+  bool operator ==(Object other) => other is _ItemKey && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
