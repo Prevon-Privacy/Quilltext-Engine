@@ -101,8 +101,6 @@ void pasteHTML(EditorState editorState, String html) {
     return;
   }
 
-  AppFlowyEditorLog.keyboard.debug('paste html: $html');
-
   final htmlToNodes = htmlToDocument(html).root.children.where((element) {
     final delta = element.delta;
     if (delta == null) {
@@ -342,8 +340,13 @@ void handlePaste(EditorState editorState) async {
 
 void _pasteRichClipboard(EditorState editorState, AppFlowyClipboardData data) {
   if (data.html != null) {
-    pasteHTML(editorState, data.html!);
-    return;
+    try {
+      pasteHTML(editorState, data.html!);
+      return;
+    } catch (_) {
+      // Errors too (StackOverflowError): fall through to the plain text below.
+      if (data.text == null) return;
+    }
   }
   if (data.text != null) {
     handlePastePlainText(editorState, data.text!);

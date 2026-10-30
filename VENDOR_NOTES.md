@@ -336,3 +336,14 @@ before-pile / pile-start / inside-pile (`idx` is only ever compared with the pil
 skips `TransactionTime.before` and text-only transactions (one run walk per visible row per keystroke saved). Checklist items join
 `_stableItemTypes`; numbered items join it with their marker (`numberedListLabel`) as the extra reuse condition. Guide:
 `docs/guides/editor-performance.md`. Tests: `test/editor/typing_rebuild_budget_test.dart`, `todo_completed_divider_test.dart`.
+
+### Patch 31: paste a picture (host bridge `ClipboardMediaPaster`)
+**Files:** `editor/clipboard_media_paster.dart` (new), `editor_component/service/shortcuts/command/paste_command.dart`, `prevon_quilltext_engine.dart` (export)
+
+Paste only ever read text and HTML, so a copied picture (a screenshot, an image from a web page, a file copied in the file manager) did nothing.
+The fork now asks an optional host bridge, `ClipboardMediaPaster.pasteMedia()`, but only when it can matter: never for a clipboard that carries
+text (no extra platform call on a normal paste), always for an empty-text clipboard, and for an HTML copy that contains `<img` (so a picture
+copied from a web page can become a local attachment instead of a remote link). `true` means the host took the clipboard and nothing is pasted
+on top; `false`, an exception, or no provider all fall through to the old text/HTML paste unchanged. The fork has no clipboard plugin: reading
+the clipboard, storing the picture and inserting the block belong to the host (same decoupling as `ImageActions`). Tests:
+`test/editor/paste_clipboard_media_test.dart`.

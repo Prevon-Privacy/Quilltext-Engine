@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:prevon_quilltext_engine/prevon_quilltext_engine.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' show parse;
+import 'package:prevon_quilltext_engine/src/plugins/html/html_input_guard.dart';
 
 typedef ElementParser = Iterable<Node> Function(
   dom.Element element,
@@ -24,6 +25,10 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
 
   @override
   Document convert(String input) {
+    // Too big or too deeply nested to parse safely: no HTML at all, so callers fall back to text.
+    if (!pasteHtmlWithinBudget(input)) {
+      return Document.blank(withInitialText: false);
+    }
     final document = parse(input);
     final body = document.body;
     if (body == null) {

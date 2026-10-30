@@ -1,15 +1,16 @@
 import 'package:flutter/widgets.dart' show BuildContext;
 import 'package:url_launcher/url_launcher_string.dart';
 
+import 'editor_link_normalizer.dart';
+
 /// Schemes a link in a note may never hand to the operating system. A note can
 /// come from an import (Keep, Obsidian, Evernote, HTML...) or a share, so its
 /// links are untrusted bytes: `javascript:` runs code in a browser, `file:` /
 /// `content:` reach other apps' files, `intent:` / `android-app:` start other
 /// apps with chosen extras, `data:` / `blob:` smuggle a page past the address
 /// check, and the `ms-*` / `search-ms:` handlers on Windows have run code from a
-/// link before. Everything else (http, https, mailto, tel, sms, the app's own
-/// schemes, a third-party app link the person typed) still opens, behind the
-/// host's question.
+/// link before. Everything else is NOT launched either: [safeLaunchUrl] only
+/// opens [kLaunchableLinkSchemes] (see `editor_link_normalizer.dart`).
 const Set<String> kBlockedLinkSchemes = {
   'javascript',
   'vbscript',
@@ -63,9 +64,10 @@ Future<bool> safeLaunchUrl(String? href, [BuildContext? context]) async {
   if (isBlockedLinkScheme(href)) {
     return Future.value(false);
   }
-  final uri = Uri.parse(href);
-  // url_launcher cannot open a link without scheme.
-  final newHref = (uri.scheme.isNotEmpty ? href : 'http://$href').trim();
+  // ONE decision for the gate and the launcher: trimmed, allowlisted, host
+  // checked, IDN converted. Anything else (including malformed text) fails closed.
+  final newHref = normalizeEditorLink(href);
+  if (newHref == null) return Future.value(false);
   // canLaunchUrlString can wrongly say no on desktop; try the launch anyway.
   try {
     await launchUrlString(newHref);

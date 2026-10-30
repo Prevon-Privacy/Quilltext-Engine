@@ -24,6 +24,14 @@ const int kGuardMaxDelimitersPerBlock = 20000;
 /// Leading `>` markers on one line above this is hostile.
 const int kGuardMaxQuoteDepth = 20;
 
+/// More than this many `|` on one line (a table row of that many cells) is hostile. Real
+/// tables have under 30 columns; the table parser is far worse than linear in the column
+/// count (20,000 columns took 116 s).
+const int kGuardMaxPipesPerLine = 256;
+
+/// More than this many `|` in one block is hostile (bounds rows x columns).
+const int kGuardMaxPipesPerBlock = 8000;
+
 /// A block longer than this (chars) is hostile.
 const int kGuardMaxBlockLength = 200000;
 
@@ -176,6 +184,7 @@ bool _blockIsHostile(String s, int start, int end) {
   // Pass 1 (forward): delimiter runs/total, quote depth, fence skipping, and
   // positions of ')' / '](' collected implicitly via a backward pass later.
   var delimTotal = 0;
+  var pipeTotal = 0;
   var fenceChar = 0;
   var fenceLen = 0;
 
@@ -215,8 +224,18 @@ bool _blockIsHostile(String s, int start, int end) {
 
         // Delimiter runs.
         var run = 0;
+        var linePipes = 0;
         for (var j = i; j < eol; j++) {
-          if (_isDelim(s.codeUnitAt(j))) {
+          final cu = s.codeUnitAt(j);
+          if (cu == 0x7C) {
+            linePipes++;
+            pipeTotal++;
+            if (linePipes > kGuardMaxPipesPerLine ||
+                pipeTotal > kGuardMaxPipesPerBlock) {
+              return true;
+            }
+          }
+          if (_isDelim(cu)) {
             run++;
             delimTotal++;
             if (run > kGuardMaxDelimiterRun) return true;

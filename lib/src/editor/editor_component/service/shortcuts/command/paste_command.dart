@@ -1,5 +1,6 @@
 import 'package:prevon_quilltext_engine/prevon_quilltext_engine.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'url_phone_regex.dart';
 
@@ -119,6 +120,39 @@ Future<bool> relinkPastedUrl(
   return true;
 }
 
+final RegExp _htmlPicture = RegExp(r'<img\b', caseSensitive: false);
+
+/// Offers the clipboard to the host's [ClipboardMediaPaster] when it may hold a picture. Plain
+/// text pastes never reach it (no extra platform call); an HTML copy that carries a picture does,
+/// so a picture copied from a web page becomes a local attachment, not a remote `<img>` link.
+/// True when the host took the clipboard. With no host bridge, or no editor context, false.
+Future<bool> _pasteClipboardMedia(
+  EditorState editorState,
+  String? text,
+  String? html,
+) async {
+  final hasText = text != null && text.trim().isNotEmpty;
+  final htmlHasPicture = html != null && _htmlPicture.hasMatch(html);
+  if (hasText && !htmlHasPicture) {
+    return false;
+  }
+  final context = editorState.service.scrollServiceKey.currentContext;
+  if (context == null || !context.mounted) {
+    return false;
+  }
+  final ClipboardMediaPaster paster;
+  try {
+    paster = context.read<ClipboardMediaPaster>();
+  } on ProviderNotFoundException {
+    return false;
+  }
+  try {
+    return await paster.pasteMedia();
+  } catch (_) {
+    return false;
+  }
+}
+
 CommandShortcutEventHandler _pasteCommandHandler = (editorState) {
   final selection = editorState.selection;
   if (selection == null) {
@@ -130,12 +164,21 @@ CommandShortcutEventHandler _pasteCommandHandler = (editorState) {
     final data = await AppFlowyClipboard.getData();
     final text = data.text;
     final html = data.html;
+    if (await _pasteClipboardMedia(editorState, text, html)) {
+      return;
+    }
     final url = singleUrlOrNull(text);
     var pasted = false;
     if (html != null && html.isNotEmpty) {
       // if the html is pasted successfully, then return
       // otherwise, paste the plain text
-      pasted = await editorState.pasteHtml(html);
+      try {
+        pasted = await editorState.pasteHtml(html);
+      } catch (_) {
+        // Catches Errors too (StackOverflowError, OOM-adjacent): a failed HTML paste must fall
+        // through to the plain-text paste below, never drop the paste.
+        pasted = false;
+      }
     }
 
     if (!pasted && text != null && text.isNotEmpty) {

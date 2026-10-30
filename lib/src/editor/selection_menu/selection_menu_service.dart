@@ -85,6 +85,10 @@ class SelectionMenu extends SelectionMenuService with WidgetsBindingObserver {
   final SelectionMenuStyle style;
 
   OverlayEntry? _selectionMenuEntry;
+
+  /// PREVON PATCH 16: bumped on every show and dismiss so only the newest
+  /// `_watchEditorGone` chain keeps running.
+  int _editorGoneWatchGen = 0;
   bool _selectionUpdateByInner = false;
   Offset _offset = Offset.zero;
   Alignment _alignment = Alignment.topLeft;
@@ -113,6 +117,7 @@ class SelectionMenu extends SelectionMenuService with WidgetsBindingObserver {
     // pre-show `dismiss()` at the top of `_show()` has no entry yet, so this
     // gate guarantees it never runs the slash cleanup.
     final hadEntry = _selectionMenuEntry != null;
+    _editorGoneWatchGen++;
 
     // PREVON PATCH 11: always detach the metrics observer first so an early
     // exit (empty selection rects, re-show, item tap) cannot leak it.
@@ -160,6 +165,19 @@ class SelectionMenu extends SelectionMenuService with WidgetsBindingObserver {
       });
     }
     _dismissSelection = null;
+  }
+
+  /// PREVON PATCH 16: frame by frame (no timer, no extra frames requested)
+  /// until the menu is dismissed or the editor it belongs to is gone.
+  void _watchEditorGone(int gen) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (gen != _editorGoneWatchGen || _selectionMenuEntry == null) return;
+      if (editorState.service.selectionServiceKey.currentState == null) {
+        dismiss();
+        return;
+      }
+      _watchEditorGone(gen);
+    });
   }
 
   /// PREVON PATCH 12: if this menu inserted the trigger `/` and the user
@@ -229,6 +247,17 @@ class SelectionMenu extends SelectionMenuService with WidgetsBindingObserver {
 
     _selectionMenuEntry = OverlayEntry(
       builder: (overlayContext) {
+        // PREVON PATCH 16: the entry lives in the ROOT overlay, so it outlives
+        // the editor when the page is popped under an open menu (a tour's
+        // Resume walking back, a system back swipe). With no selection service
+        // left the placement below throws on every rebuild and the opaque
+        // full-screen layer would swallow touches: draw nothing and dismiss.
+        if (editorState.service.selectionServiceKey.currentState == null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_selectionMenuEntry != null) dismiss();
+          });
+          return const SizedBox.shrink();
+        }
         final placement = _computePlacement(overlayContext);
         // PREVON PATCH 11: the root overlay spans the whole screen, so the
         // host box is screen-sized and every coordinate below — the editor
@@ -297,6 +326,11 @@ class SelectionMenu extends SelectionMenuService with WidgetsBindingObserver {
     );
 
     Overlay.of(context, rootOverlay: true).insert(_selectionMenuEntry!);
+
+    // PREVON PATCH 16: nothing rebuilds the entry when the editor page is
+    // popped with no keyboard up (desktop), so the menu would float over the
+    // next page. Look for the editor going away on each frame while open.
+    _watchEditorGone(++_editorGoneWatchGen);
 
     // PREVON PATCH 11: observe metrics while the menu is open so a keyboard
     // show/hide, rotation or resize triggers didChangeMetrics and rebuilds
