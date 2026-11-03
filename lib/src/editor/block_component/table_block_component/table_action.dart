@@ -195,10 +195,14 @@ class TableActions {
 /// order.
 void _clearCellContent(Transaction transaction, Node cell) {
   final path = cell.path;
-  for (final child in cell.children.toList().reversed) {
+  final old = cell.children.toList();
+  // The empty paragraph goes in AFTER the old content, then the old content is deleted. Deleting first
+  // and inserting at the same index made the transaction shift that insert backwards, and undo left
+  // extra empty paragraphs in the cell.
+  transaction.insertNode([...path, old.length], paragraphNode(text: ''));
+  for (final child in old.reversed) {
     transaction.deleteNode(child);
   }
-  transaction.insertNode([...path, 0], paragraphNode(text: ''));
 }
 
 bool _moveLine(

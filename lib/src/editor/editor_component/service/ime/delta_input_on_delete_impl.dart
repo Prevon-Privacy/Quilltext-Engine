@@ -36,6 +36,7 @@ Future<void> onDelete(
         ..deleteText(node, start, length)
         ..afterSelection = afterSelection;
       await editorState.apply(transaction);
+      await reopenSlashMenuIfTyping(editorState);
       return;
     }
   }
@@ -45,4 +46,5 @@ Future<void> onDelete(
       convertToParagraphCommand.execute(editorState)) {
     backspaceCommand.execute(editorState);
   }
+  await reopenSlashMenuIfTyping(editorState);
 }

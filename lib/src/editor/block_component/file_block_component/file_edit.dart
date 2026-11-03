@@ -51,6 +51,22 @@ void removeFile(EditorState editorState, Node node) {
   editorState.apply(transaction);
 }
 
+/// Rewrites a file block after the host moved or copied its bytes: one transaction, so one undo puts the old block back. `via` is
+/// removed (a null value drops the key) when the block now holds its own copy. The name, type and size change only when [change] says so.
+void applyFileLinkChange(
+    EditorState editorState, Node node, FileLinkChange change) {
+  editorState.apply(
+    editorState.transaction
+      ..updateNode(node, {
+        FileBlockKeys.url: change.url,
+        FileBlockKeys.via: change.via,
+        if (change.name != null) FileBlockKeys.name: change.name,
+        if (change.mime != null) FileBlockKeys.mime: change.mime,
+        if (change.size != null) FileBlockKeys.size: change.size,
+      }),
+  );
+}
+
 /// Sets or clears "Hide" on a file block: one transaction, so one undo reverts
 /// it. Visible is stored as the attribute's absence, so an untouched note body does not change.
 void setFileHiddenFromAi(EditorState editorState, Node node, bool hidden) {

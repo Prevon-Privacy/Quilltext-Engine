@@ -361,6 +361,11 @@ class _PositionedListState extends State<PositionedList> {
     if (!updateScheduled) {
       updateScheduled = true;
       SchedulerBinding.instance.addPostFrameCallback((_) {
+        // The list can be gone by the time the frame ends (the page was left mid-scroll).
+        if (!mounted) {
+          updateScheduled = false;
+          return;
+        }
         final elements = registeredElements.value;
         if (elements == null) {
           updateScheduled = false;

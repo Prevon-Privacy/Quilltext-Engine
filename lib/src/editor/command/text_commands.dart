@@ -317,6 +317,10 @@ extension TextTransforms on EditorState {
       assert(false, 'node is null');
       return;
     }
+    // A divider, image or file block holds no text: nothing to insert into.
+    if (node.delta == null) {
+      return;
+    }
     return apply(
       transaction..insertText(node, index, text),
     );

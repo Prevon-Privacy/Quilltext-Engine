@@ -58,9 +58,14 @@ class _AutoScrollableWidgetState extends State<AutoScrollableWidget> {
     final bool isDesktopOrWeb = PlatformExtension.isDesktopOrWeb;
     _autoScroller = AutoScroller(
       _scrollableState,
-      velocityScalar: isDesktopOrWeb ? 0.125 : 0.02,
-      minimumAutoScrollDelta: isDesktopOrWeb ? 0.07 : 0.004,
-      maxAutoScrollDelta: isDesktopOrWeb ? 2.75 : 0.053,
+      // Desktop (see `desktopAutoScroll*` in auto_scroller.dart): one step per frame, speed eased along a
+      // curve from the edge band to past the window edge. Phones keep their own tuned values.
+      velocityScalar: isDesktopOrWeb ? 1 : 0.02,
+      minimumAutoScrollDelta: isDesktopOrWeb ? kDesktopAutoScrollMinStep : 0.004,
+      maxAutoScrollDelta: isDesktopOrWeb ? kDesktopAutoScrollMaxStep : 0.053,
+      overDragMax: isDesktopOrWeb ? kDesktopAutoScrollOverDrag : 20,
+      frameLocked: isDesktopOrWeb,
+      rampExponent: kDesktopAutoScrollExponent,
       onScrollViewScrolled: () {
         if (!isDesktopOrWeb) {
           WidgetsBinding.instance.addPostFrameCallback((_) {

@@ -2,6 +2,7 @@ import 'package:prevon_quilltext_engine/prevon_quilltext_engine.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'paste_lines.dart';
 import 'url_phone_regex.dart';
 
 final List<CommandShortcutEvent> pasteCommands = [
@@ -224,7 +225,7 @@ final RegExp _phoneRegex = kPhoneRegex;
 
 extension on EditorState {
   Future<bool> pasteHtml(String html) async {
-    final nodes = htmlToDocument(html).root.children.toList();
+    final nodes = splitLineBreaks(htmlToDocument(html).root.children.toList());
     // remove the front and back empty line
     while (nodes.isNotEmpty &&
         nodes.first.delta?.isEmpty == true &&
@@ -261,12 +262,7 @@ extension on EditorState {
     }
 
     final nodes = plainText
-        .split('\n')
-        .map(
-          (paragraph) => paragraph
-            ..replaceAll(r'\r', '')
-            ..trimRight(),
-        )
+        .split(pasteLineBreak)
         .map((paragraph) {
           Delta delta = Delta();
           if (_hrefRegex.hasMatch(paragraph) ||

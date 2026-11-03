@@ -111,6 +111,9 @@ class SelectionMenu extends SelectionMenuService with WidgetsBindingObserver {
   /// Keep the menu this far from a screen edge when clamping horizontally.
   static const double _kEdgeMargin = 8.0;
 
+  /// True while the menu overlay is on screen.
+  bool get isShowing => _selectionMenuEntry != null;
+
   @override
   void dismiss() {
     // PREVON PATCH 12: whether the menu was actually on screen. The internal

@@ -13,7 +13,14 @@ final CommandShortcutEvent backspaceCommand = CommandShortcutEvent(
   key: 'backspace',
   getDescription: () => AppFlowyEditorL10n.current.cmdDeleteLeft,
   command: 'backspace, shift+backspace',
-  handler: _backspaceCommandHandler,
+  handler: (editorState) {
+    final result = _backspaceCommandHandler(editorState);
+    // Backspacing into `/b` shows the slash menu again, as typing it would.
+    if (result == KeyEventResult.handled) {
+      Future<void>(() => reopenSlashMenuIfTyping(editorState));
+    }
+    return result;
+  },
 );
 
 CommandShortcutEventHandler _backspaceCommandHandler = (editorState) {

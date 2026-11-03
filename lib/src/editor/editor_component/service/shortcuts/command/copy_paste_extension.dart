@@ -69,7 +69,7 @@ extension EditorCopyPaste on EditorState {
       return;
     }
 
-    final lastNodeLength = calculateLength(nodes);
+    var lastNodeLength = calculateLength(nodes);
     // merge the current selected node delta into the nodes.
     if (delta.isNotEmpty) {
       final firstNode = nodes.first;
@@ -81,11 +81,14 @@ extension EditorCopyPaste on EditorState {
       }
 
       final lastNode = nodes.last;
+      final rest = delta.slice(selection.endIndex);
       if (lastNode.delta != null) {
-        nodes.last.insertDelta(
-          delta.slice(selection.endIndex),
-          insertAfter: true,
-        );
+        nodes.last.insertDelta(rest, insertAfter: true);
+      } else if (rest.isNotEmpty) {
+        // The paste ends in a block that holds no text (a divider, a picture): the words that
+        // followed the caret go on in a paragraph of their own instead of being dropped.
+        nodes.add(paragraphNode(delta: rest));
+        lastNodeLength = 0;
       }
     }
 
@@ -97,6 +100,25 @@ extension EditorCopyPaste on EditorState {
           ...nodes.first.attributes,
         },
       );
+    }
+
+    // Pasting lines into a checklist / bullet / numbered row: every plain pasted line becomes
+    // a row of that same kind, not one row followed by loose paragraphs.
+    if (_listTypes.contains(node.type)) {
+      for (var i = 0; i < nodes.length; i++) {
+        final pasted = nodes[i];
+        if (pasted.type != ParagraphBlockKeys.type || pasted.delta == null) {
+          continue;
+        }
+        nodes[i] = pasted.copyWith(
+          type: node.type,
+          attributes: {
+            ...pasted.attributes,
+            if (node.type == TodoListBlockKeys.type)
+              TodoListBlockKeys.checked: false,
+          },
+        );
+      }
     }
 
     for (final child in node.children) {

@@ -181,4 +181,80 @@ void main() {
       debugDefaultTargetPlatformOverride = null;
     }
   });
+
+  testWidgets('IME text typed and Enter in ONE change picks the row',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      final state = await _pump(tester);
+      await customSlashCommand(standardSelectionMenuItems,
+              style: SelectionMenuStyle.dark)
+          .handler(state);
+      await tester.pumpAndSettle();
+      // The IME batches fast typing: "/" -> "/head\n" arrives as one insertion.
+      tester.testTextInput.updateEditingValue(const TextEditingValue(
+        text: '/head\n',
+        selection: TextSelection.collapsed(offset: 6),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byType(SelectionMenuItemWidget), findsNothing);
+      final node = state.getNodeAtPath([0])!;
+      expect(node.type, isNot('paragraph'));
+      expect(node.delta?.toPlainText() ?? '', isNot(contains('/')));
+      expect(state.document.root.children.length, 1);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('IME autocorrect + Enter in ONE replacement picks the row',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      final state = await _pump(tester);
+      await customSlashCommand(standardSelectionMenuItems,
+              style: SelectionMenuStyle.dark)
+          .handler(state);
+      await tester.pumpAndSettle();
+      final node = state.getNodeAtPath([0])!;
+      await state.apply(state.transaction..insertText(node, 1, 'hed'));
+      await tester.pumpAndSettle();
+      state.selection = Selection.collapsed(Position(path: [0], offset: 4));
+      await tester.pumpAndSettle();
+      // Keyboard commits an autocorrected word and Enter together.
+      tester.testTextInput.updateEditingValue(const TextEditingValue(
+        text: '/head\n',
+        selection: TextSelection.collapsed(offset: 6),
+      ));
+      await tester.pumpAndSettle();
+      expect(find.byType(SelectionMenuItemWidget), findsNothing);
+      expect(state.getNodeAtPath([0])!.type, isNot('paragraph'));
+      expect(state.document.root.children.length, 1);
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
+
+  testWidgets('android: a hardware Enter key picks the highlighted row',
+      (tester) async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    try {
+      final state = await _pump(tester);
+      await customSlashCommand(standardSelectionMenuItems,
+              style: SelectionMenuStyle.dark)
+          .handler(state);
+      await tester.pumpAndSettle();
+      final node = state.getNodeAtPath([0])!;
+      await state.apply(state.transaction..insertText(node, 1, 'he'));
+      await tester.pumpAndSettle();
+      // Touch keeps focus on the editor, so the key lands there, not on the menu.
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pumpAndSettle();
+      expect(find.byType(SelectionMenuItemWidget), findsNothing);
+      expect(state.document.root.children.length, 1);
+      expect(state.getNodeAtPath([0])!.type, isNot('paragraph'));
+    } finally {
+      debugDefaultTargetPlatformOverride = null;
+    }
+  });
 }

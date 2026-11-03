@@ -59,6 +59,7 @@ bool isIndentable(EditorState editorState) {
   final isAllIndentable = nodes.every(
     (node) =>
         movableBlockTypes.contains(node.type) &&
+        canNestUnder(node) &&
         indentWouldFit(editorState, previous, node),
   );
   if (!isAllIndentable) {

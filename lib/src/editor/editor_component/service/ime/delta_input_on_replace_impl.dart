@@ -106,6 +106,7 @@ Future<void> onReplace(
       ..replaceText(node, start, length, replacement.replacementText)
       ..afterSelection = afterSelection;
     await editorState.apply(transaction);
+    await reopenSlashMenuIfTyping(editorState);
   } else {
     await editorState.deleteSelection(selection);
     // insert the replacement

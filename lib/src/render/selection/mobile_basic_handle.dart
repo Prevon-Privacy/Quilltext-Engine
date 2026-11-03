@@ -58,6 +58,61 @@ enum HandleType {
   }
 }
 
+/// PREVON PATCH 32: a pan recognizer that wins the gesture arena the moment a finger lands on it.
+///
+/// A selection handle sits inside the document, which sits inside whatever scrolls (the note's own list, a Home
+/// page) or pages (the Scratchpad's tabs). A plain [PanGestureRecognizer] waits for 36 px of travel while a
+/// vertical scroll takes the pointer at 18 px, so a slide that drifted a little up or down was lost to the page
+/// and the handle never moved. The handle is a small target the finger chose on purpose, so there is nothing
+/// to wait for: it takes the pointer on touch-down and every drag that starts on it is the handle's. Drags that
+/// start anywhere else are untouched (the page still scrolls and swipes).
+class EagerPanGestureRecognizer extends PanGestureRecognizer {
+  EagerPanGestureRecognizer({super.debugOwner, super.supportedDevices});
+
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    resolve(GestureDisposition.accepted);
+  }
+}
+
+/// Drop-in for the handles' `GestureDetector(onPan...)`, built on [EagerPanGestureRecognizer].
+class HandleDragDetector extends StatelessWidget {
+  const HandleDragDetector({
+    super.key,
+    required this.onPanStart,
+    required this.onPanUpdate,
+    required this.onPanEnd,
+    required this.child,
+  });
+
+  final GestureDragStartCallback onPanStart;
+  final GestureDragUpdateCallback onPanUpdate;
+  final GestureDragEndCallback onPanEnd;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return RawGestureDetector(
+      behavior: HitTestBehavior.opaque,
+      gestures: <Type, GestureRecognizerFactory>{
+        EagerPanGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<EagerPanGestureRecognizer>(
+          () => EagerPanGestureRecognizer(),
+          (recognizer) {
+            recognizer
+              ..dragStartBehavior = DragStartBehavior.down
+              ..onStart = onPanStart
+              ..onUpdate = onPanUpdate
+              ..onEnd = onPanEnd;
+          },
+        ),
+      },
+      child: child,
+    );
+  }
+}
+
 abstract class _IDragHandle extends StatelessWidget {
   const _IDragHandle({
     super.key,
@@ -220,9 +275,7 @@ class _IOSDragHandle extends _IDragHandle {
       offset = -ballWidth;
     }
 
-    child = GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      dragStartBehavior: DragStartBehavior.down,
+    child = HandleDragDetector(
       onPanStart: (details) {
         editorState.service.selectionService.onPanStart(
           details.translate(0, offset),
@@ -290,8 +343,9 @@ class _AndroidDragHandle extends _IDragHandle {
             child: Container(
               width: ballWidth,
               height: ballWidth,
+              // Outline only: a hollow drop, so the text under it stays visible.
               decoration: BoxDecoration(
-                color: handleColor,
+                border: Border.all(color: handleColor, width: 1.5),
                 borderRadius: BorderRadius.only(
                   topRight: Radius.circular(handleBallWidth),
                   bottomLeft: Radius.circular(handleBallWidth),
@@ -329,9 +383,7 @@ class _AndroidDragHandle extends _IDragHandle {
       ],
     );
 
-    child = GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      dragStartBehavior: DragStartBehavior.down,
+    child = HandleDragDetector(
       onPanStart: (details) {
         selection = editorState.service.selectionService.onPanStart(
           details.translate(0, -ballWidth),

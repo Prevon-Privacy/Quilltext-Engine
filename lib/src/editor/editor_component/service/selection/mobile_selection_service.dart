@@ -365,6 +365,13 @@ class _MobileSelectionServiceWidgetState
           editorState.updateSelectionWithReason(
             editorState.selection,
             reason: SelectionUpdateReason.transaction,
+            // Hiding the handle must not re-attach the text input, or the
+            // keyboard the person dismissed pops back up.
+            extraInfo: {
+              selectionExtraInfoDoNotAttachTextService: true,
+              // Nor may it pull the page back to the caret when it is off screen.
+              selectionExtraInfoDoNotAutoScroll: true,
+            },
           );
         }
       },
@@ -647,6 +654,16 @@ class _MobileSelectionServiceWidgetState
     );
   }
 
+  /// Tapping the exact spot the caret already sits at changes no selection, so
+  /// the selection listener never fires and a keyboard the person dismissed
+  /// stayed down. Bring it back (attaching also calls `show()`).
+  void _showKeyboardIfSameSpot(Selection? before) {
+    final now = editorState.selection;
+    if (before == null || now == null || !now.isCollapsed) return;
+    if (before != now) return;
+    editorState.service.keyboardService?.enableKeyBoard(now);
+  }
+
   void _onTapUpIOS(TapUpDetails details) {
     final offset = details.globalPosition;
 
@@ -663,6 +680,7 @@ class _MobileSelectionServiceWidgetState
       return;
     }
 
+    final selectionBeforeTap = editorState.selection;
     clearSelection();
 
     final tappedPosition = getPositionInOffset(offset);
@@ -690,6 +708,7 @@ class _MobileSelectionServiceWidgetState
         customSelectionType: SelectionType.inline,
         extraInfo: null,
       );
+      _showKeyboardIfSameSpot(selectionBeforeTap);
     }
     // PREVON PATCH 19: a tap on an image opens it full screen.
     if (tappedPosition != null) {
@@ -823,6 +842,7 @@ class _MobileSelectionServiceWidgetState
   void _onTapUpAndroid(TapUpDetails details) {
     final offset = details.globalPosition;
 
+    final selectionBeforeTap = editorState.selection;
     clearSelection();
 
     // make a collapsed selection at offset
@@ -837,6 +857,7 @@ class _MobileSelectionServiceWidgetState
       customSelectionType: SelectionType.inline,
       extraInfo: null,
     );
+    _showKeyboardIfSameSpot(selectionBeforeTap);
     if (!openNoteLinkAtPosition(editorState, position, offset)) {
       // PREVON PATCH 19: a tap on an image opens it full screen.
       openImageAtPosition(editorState, position, offset);

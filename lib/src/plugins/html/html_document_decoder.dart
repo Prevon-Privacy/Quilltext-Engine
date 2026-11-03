@@ -55,8 +55,15 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
     Iterable<dom.Node> domNodes, {
     String? type,
   }) {
-    final delta = Delta();
+    var delta = Delta();
     final List<Node> nodes = [];
+    // The loose text gathered so far becomes its own paragraph, and the next text starts afresh.
+    void flush() {
+      if (delta.isEmpty) return;
+      nodes.add(paragraphNode(delta: delta));
+      delta = Delta();
+    }
+
     for (final domNode in domNodes) {
       if (domNode is dom.Element) {
         final localName = domNode.localName;
@@ -74,9 +81,7 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
             delta.insert(domNode.text, attributes: attributes);
           }
         } else if (HTMLTags.specialElements.contains(localName)) {
-          if (delta.isNotEmpty) {
-            nodes.add(paragraphNode(delta: delta));
-          }
+          flush();
           nodes.addAll(
             _parseSpecialElements(
               domNode,
@@ -84,12 +89,18 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
             ),
           );
         } else if (customDecoders.containsKey(localName)) {
-          if (delta.isNotEmpty) {
-            nodes.add(paragraphNode(delta: delta));
-          }
+          flush();
           nodes.addAll(
             customDecoders[localName]!(domNode, _parseDeltaElement),
           );
+        } else if (localName == HTMLTags.br) {
+          // A line break between blocks is a line: the copy of an empty line is a bare `<br>`, and
+          // dropping it lost the blank line on paste. After loose text it only ends that text's line.
+          if (delta.isEmpty) {
+            nodes.add(paragraphNode());
+          } else {
+            flush();
+          }
         }
       } else if (domNode is dom.Text) {
         // skip the empty text node
@@ -101,9 +112,7 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
         AppFlowyEditorLog.editor.debug('Unknown node type: $domNode');
       }
     }
-    if (delta.isNotEmpty) {
-      nodes.add(paragraphNode(delta: delta));
-    }
+    flush();
     return nodes;
   }
 
@@ -462,6 +471,10 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
             nodes.addAll(
               customDecoders[child.localName]!(child, _parseDeltaElement),
             );
+          } else if (child.localName == HTMLTags.br) {
+            // A line break is text, not nothing: dropping it glued `a<br>b` into `ab`. The paste
+            // path splits the block on it (splitLineBreaks), one row per line.
+            delta.insert('\n');
           } else {
             final attributes = _parserFormattingElementAttributes(child);
             delta.insert(

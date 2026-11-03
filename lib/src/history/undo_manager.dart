@@ -90,19 +90,23 @@ class UndoManager {
   final FixedSizeStack redoStack;
   EditorState? state;
 
+  /// True while [redo] applies its transaction. A redo is not a new edit: it must not discard the
+  /// rest of the redo stack, and it always lands as its own history item.
+  bool get isRedoing => _isRedoing;
+  bool _isRedoing = false;
+
   UndoManager([int stackSize = 20])
       : undoStack = FixedSizeStack(stackSize),
         redoStack = FixedSizeStack(stackSize);
 
   HistoryItem getUndoHistoryItem() {
-    if (undoStack.isEmpty) {
+    if (undoStack.isEmpty || _isRedoing) {
       final item = HistoryItem();
       undoStack.push(item);
       return item;
     }
     final last = undoStack.last;
     if (last.sealed) {
-      redoStack.clear();
       final item = HistoryItem();
       undoStack.push(item);
       return item;
@@ -141,13 +145,20 @@ class UndoManager {
       return;
     }
     final transaction = historyItem.toTransaction(s);
-    s.apply(
-      transaction,
-      options: const ApplyOptions(
-        recordUndo: true,
-        recordRedo: false,
-      ),
-    );
+    _isRedoing = true;
+    try {
+      // apply() records its history synchronously, before its first await.
+      s.apply(
+        transaction,
+        options: const ApplyOptions(
+          recordUndo: true,
+          recordRedo: false,
+        ),
+        skipHistoryDebounce: true,
+      );
+    } finally {
+      _isRedoing = false;
+    }
   }
 
   void forgetRecentUndo() {

@@ -66,6 +66,10 @@ extension SelectionTransform on EditorState {
 
     // Get the nodes that are fully or partially selected.
     final nodes = getNodesInSelection(selection);
+    // A selection that points past the page (left over from before an undo) matches nothing.
+    if (nodes.isEmpty) {
+      return false;
+    }
 
     // If only one node is selected, then we can just delete the selected text
     // or node.
@@ -170,20 +174,14 @@ extension SelectionTransform on EditorState {
           // editor. Skip text deletion for such a node instead of crashing.
           if (node.delta == null) {
             // Nothing to do — a null-delta leading node has no text to trim.
-          } else if (ignoreNodeTypes.contains(nodes.last.parent?.type) ||
-              ignoreNodeTypes.contains(node.parent?.type)) {
-            // If the last or first node is inside table we will only delete
-            // selection part of first node.
+          } else {
+            // The selection runs on into later blocks that cannot be merged in (a table cell, a divider,
+            // an image): this block loses its text from the start of the selection to its own end. The
+            // end offset belongs to the LAST block, so `selection.length` would be negative here.
             transaction.deleteText(
               node,
               selection.startIndex,
               node.delta!.length - selection.startIndex,
-            );
-          } else {
-            transaction.deleteText(
-              node,
-              selection.startIndex,
-              selection.length,
             );
           }
         }

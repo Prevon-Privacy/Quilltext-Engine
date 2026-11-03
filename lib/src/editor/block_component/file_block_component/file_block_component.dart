@@ -30,6 +30,10 @@ class FileBlockKeys {
   /// True when the person hid this file from the host's features. Absent means visible. A person's
   /// decision, so it lives here in the saved note body, never in the rebuildable text index.
   static const String hiddenFromAi = 'hiddenFromAi';
+
+  /// Present only on a LINKED block: the note id of the Files item that owns the bytes. `url` is then that item's blob. Absent means the
+  /// block holds its own copy. An id, never a name; an older build ignores it and still opens the file through `url`.
+  static const String via = 'via';
 }
 
 Node fileNode({
@@ -37,6 +41,7 @@ Node fileNode({
   required String name,
   String mime = '',
   int size = 0,
+  String? via,
 }) =>
     Node(
       type: FileBlockKeys.type,
@@ -45,6 +50,7 @@ Node fileNode({
         FileBlockKeys.name: name,
         FileBlockKeys.mime: mime,
         FileBlockKeys.size: size,
+        if (via != null && via.isNotEmpty) FileBlockKeys.via: via,
       },
     );
 
@@ -65,7 +71,9 @@ List<FileViewRequest> collectFileRequests(Node root) {
 FileViewRequest fileRequestOf(Node node) {
   final a = node.attributes;
   final size = a[FileBlockKeys.size];
+  final via = a[FileBlockKeys.via];
   return FileViewRequest(
+    via: via is String && via.isNotEmpty ? via : null,
     src: (a[FileBlockKeys.url] as String?) ?? '',
     name: (a[FileBlockKeys.name] as String?) ?? '',
     mime: (a[FileBlockKeys.mime] as String?) ?? '',
@@ -203,6 +211,10 @@ class FileBlockComponentWidgetState extends State<FileBlockComponentWidget>
         break; // the host handled it inside showFileMenu
       case FileMenuChoice.view:
         break; // the host handled it inside showFileMenu
+      case FileMenuChoice.openInFiles:
+        break; // the host handled it inside showFileMenu
+      case FileMenuChoice.convertToText:
+        break; // the host handled it inside showFileMenu
       case FileMenuChoice.save:
         await actions.saveFile(context, fileRequestOf(node));
       case FileMenuChoice.moveUp:
@@ -215,7 +227,36 @@ class FileBlockComponentWidgetState extends State<FileBlockComponentWidget>
         _statusSource()?.onRemoved(req, () => editorState.undoManager.undo());
       case FileMenuChoice.toggleAiHidden:
         _toggleAiHidden();
+      case FileMenuChoice.moveToFiles:
+        await _applyLinkChange(
+            (host, file) => host.moveToFiles(context, file));
+      case FileMenuChoice.makeCopy:
+        await _applyLinkChange(
+            (host, file) => host.makeIndependentCopy(context, file));
+      case FileMenuChoice.copyToFiles:
+        await _linkHost()?.copyToFiles(context, fileRequestOf(node));
     }
+  }
+
+  FileLinkHost? _linkHost() {
+    try {
+      return context.read<FileLinkHost>();
+    } on ProviderNotFoundException {
+      return null;
+    }
+  }
+
+  /// Asks the host to move or copy the bytes, then rewrites THIS block as one undoable edit. The block may be gone by the time the host
+  /// answers (the person kept typing or deleted it), in which case nothing is written.
+  Future<void> _applyLinkChange(
+    Future<FileLinkChange?> Function(FileLinkHost host, FileViewRequest file)
+        ask,
+  ) async {
+    final host = _linkHost();
+    if (host == null || !editorState.editable) return;
+    final change = await ask(host, fileRequestOf(node));
+    if (change == null || !mounted || node.parent == null) return;
+    applyFileLinkChange(editorState, node, change);
   }
 
   @override
@@ -320,7 +361,7 @@ class FileBlockComponentWidgetState extends State<FileBlockComponentWidget>
       node: node,
       delegate: this,
       listenable: editorState.selectionNotifier,
-      remoteSelection: editorState.remoteSelections,
+      remoteSelection: editorState.remoteSelectionsIfEnabled,
       blockColor: editorState.editorStyle.selectionColor,
       supportTypes: const [BlockSelectionType.block],
       child: card,
@@ -479,12 +520,14 @@ extension InsertFile on EditorState {
     required String name,
     String mime = '',
     int size = 0,
+    String? via,
   }) async {
     final selection = this.selection;
     if (selection == null || !selection.isCollapsed) return false;
     final node = getNodeAtPath(selection.end.path);
     if (node == null) return false;
-    final block = fileNode(url: url, name: name, mime: mime, size: size);
+    final block =
+        fileNode(url: url, name: name, mime: mime, size: size, via: via);
     final transaction = this.transaction;
     if (node.type == ParagraphBlockKeys.type &&
         (node.delta?.isEmpty ?? false)) {

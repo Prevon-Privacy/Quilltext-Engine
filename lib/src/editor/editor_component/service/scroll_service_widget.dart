@@ -91,6 +91,16 @@ class _ScrollServiceWidgetState extends State<ScrollServiceWidget>
       return;
     }
 
+    if (editorState.selectionExtraInfo?[selectionExtraInfoDoNotAutoScroll] ==
+        true) {
+      return;
+    }
+
+    // A mouse drag scrolls through its own auto-scroll (desktop_selection_service.dart).
+    if (editorState.pointerSelecting) {
+      return;
+    }
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final selectionRects = editorState.selectionRects();
       if (selectionRects.isEmpty) {

@@ -10,6 +10,7 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 export 'package:flutter/physics.dart' show Tolerance;
 
@@ -151,6 +152,9 @@ class EdgeDraggingAutoScroller {
     double minimumAutoScrollDelta = 1.0,
     double maxAutoScrollDelta = 20.0,
     Duration? animationDuration,
+    this.overDragMax = 20.0,
+    this.frameLocked = false,
+    this.rampExponent = 1.0,
   })  : assert(minimumAutoScrollDelta >= 0),
         assert(maxAutoScrollDelta >= minimumAutoScrollDelta),
         _minimumAutoScrollDelta = minimumAutoScrollDelta,
@@ -175,6 +179,23 @@ class EdgeDraggingAutoScroller {
   /// auto-scroll velocity = (distance of overscroll) * velocityScalar.
   /// {@endtemplate}
   final double velocityScalar;
+
+  /// How far past the viewport edge the drag target counts for speed. Speed grows with the overshoot up
+  /// to this distance, so a larger value spreads the ramp over a wider band instead of reaching full
+  /// speed a few pixels into it.
+  final double overDragMax;
+
+  /// One scroll step per frame, sized by the time since the last one. The default loop steps whenever
+  /// the event loop gets round to it, which on a desktop came out as 3 px, then nothing for a frame,
+  /// then 3 px again: a visible judder while dragging a selection near the edge. The speeds are px per
+  /// 60 Hz frame either way; this makes them px per second.
+  final bool frameLocked;
+
+  /// With [frameLocked]: speed goes from the minimum delta (just inside the band) to the maximum (at
+  /// [overDragMax] past the edge) along `t^rampExponent`. Above 1 it stays gentle near the edge, for
+  /// precision, and climbs fast further out, so a long note can still be swept in a second or two.
+  final double rampExponent;
+  Duration? _lastStepStamp;
 
   /// The least amount of scroll delta applied per auto scroll tick.
   ///
@@ -232,6 +253,7 @@ class EdgeDraggingAutoScroller {
 
   /// Stop any ongoing auto scrolling.
   void stopAutoScroll() {
+    _lastStepStamp = null;
     _scrolling = false;
     _previousScrollDelta = null;
     _currentDuration = null;
@@ -254,6 +276,11 @@ class EdgeDraggingAutoScroller {
     try {
       var stalledSteps = 0;
       for (var step = 0; step < _maxAutoScrollSteps; step++) {
+        // The page was closed while a drag was still scrolling it.
+        if (!scrollable.mounted) break;
+        // stopAutoScroll() during the wait for the next frame must end the loop, not be undone by one
+        // more step (a step sets the scrolling flag again).
+        if (step > 0 && !_scrolling) break;
         final before = scrollable.position.pixels;
         final again = await _scrollStep();
         if (!again || !_scrolling) break;
@@ -265,12 +292,18 @@ class EdgeDraggingAutoScroller {
           stalledSteps = 0;
         }
         // Let timers, input and the next frame run before the next step.
-        await Future<void>.delayed(Duration.zero);
+        if (frameLocked) {
+          await SchedulerBinding.instance.endOfFrame;
+        } else {
+          await Future<void>.delayed(Duration.zero);
+        }
       }
     } catch (e) {
       debugPrint(e.toString());
     } finally {
       _scrolling = false;
+      // The next scroll starts from a fresh clock, not from the gap since this one ended.
+      _lastStepStamp = null;
     }
   }
 
@@ -303,7 +336,6 @@ class EdgeDraggingAutoScroller {
 
       _scrolling = true;
       double? newOffset;
-      const double overDragMax = 20.0;
 
       final Offset deltaToOrigin = scrollable.deltaToScrollOrigin;
       final Offset viewportOrigin =
@@ -379,6 +411,19 @@ class EdgeDraggingAutoScroller {
         return false;
       }
       double delta = newOffset - currentPixels;
+      if (frameLocked) {
+        final stamp = SchedulerBinding.instance.currentSystemFrameTimeStamp;
+        final last = _lastStepStamp;
+        _lastStepStamp = stamp;
+        final ms = last == null ? 16.667 : (stamp - last).inMicroseconds / 1000;
+        // A stalled frame must not catapult the page, a very short one still moves a little.
+        delta *= (ms / 16.667).clamp(0.25, 3.0);
+        newOffset = (currentPixels + delta).clamp(
+          scrollable.position.minScrollExtent,
+          scrollable.position.maxScrollExtent,
+        );
+        delta = newOffset - currentPixels;
+      }
       if (delta.abs() < _minimumAutoScrollDelta) {
         if (delta.abs() <= precisionErrorTolerance) {
           _scrolling = false;
@@ -397,6 +442,11 @@ class EdgeDraggingAutoScroller {
           return false;
         }
       }
+      if (frameLocked) {
+        scrollable.position.jumpTo(newOffset);
+        onScrollViewScrolled?.call();
+        return _scrolling;
+      }
       await scrollable.position.moveTo(
         newOffset,
         duration: _currentDuration ?? _animationDuration,
@@ -412,7 +462,11 @@ class EdgeDraggingAutoScroller {
     if (overDrag <= precisionErrorTolerance) {
       return 0;
     }
-    final double desiredDelta = overDrag * velocityScalar;
+    final double desiredDelta = frameLocked
+        ? _minimumAutoScrollDelta +
+            (_maxAutoScrollDelta - _minimumAutoScrollDelta) *
+                math.pow((overDrag / overDragMax).clamp(0.0, 1.0), rampExponent)
+        : overDrag * velocityScalar;
     final double clampedDelta = desiredDelta.clamp(
       _minimumAutoScrollDelta,
       _maxAutoScrollDelta,

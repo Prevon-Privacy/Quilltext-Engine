@@ -87,4 +87,6 @@ Future<void> onInsert(
     )
     ..afterSelection = afterSelection;
   await editorState.apply(transaction);
+  // Typing letters straight after a closed `/b` brings the slash menu back.
+  await reopenSlashMenuIfTyping(editorState);
 }

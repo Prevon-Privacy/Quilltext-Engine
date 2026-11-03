@@ -15,18 +15,47 @@ class DocumentMarkdownEncoder extends Converter<Document, String> {
   @override
   String convert(Document input) {
     final buffer = StringBuffer();
+    Node? previous;
     for (final node in input.root.children) {
       NodeParser? parser = parsers.firstWhereOrNull(
         (element) => element.id == node.type,
       );
       if (parser != null) {
-        buffer.write(parser.transform(node, this));
+        final text = parser.transform(node, this);
+        // Markdown ends a paragraph, a quote or a list item only at a blank line: without one, a
+        // paragraph under a list or quote is swallowed by it and two quotes become one. An explicit
+        // [lineBreak] is the caller's own choice and is kept as it was.
+        if (lineBreak.isEmpty &&
+            previous != null &&
+            text.isNotEmpty &&
+            !_keepsTight(previous, node)) {
+          final soFar = buffer.toString();
+          if (soFar.isNotEmpty && soFar.endsWith('\n') && !soFar.endsWith('\n\n')) {
+            buffer.write('\n');
+          }
+        }
+        buffer.write(text);
+        if (text.isNotEmpty) previous = node;
         if (lineBreak.isNotEmpty && node.id != input.root.children.last.id) {
           buffer.write(lineBreak);
         }
       }
     }
     return buffer.toString();
+  }
+
+  static const _listTypes = {
+    BulletedListBlockKeys.type,
+    NumberedListBlockKeys.type,
+    TodoListBlockKeys.type,
+  };
+
+  /// Two neighbouring items of one list stay on consecutive lines (a blank line would turn the list
+  /// "loose"); a bullet and a to-do share the same `*` marker family.
+  static bool _keepsTight(Node a, Node b) {
+    if (!_listTypes.contains(a.type) || !_listTypes.contains(b.type)) return false;
+    if (a.type == b.type) return true;
+    return a.type != NumberedListBlockKeys.type && b.type != NumberedListBlockKeys.type;
   }
 
   String convertNodes(

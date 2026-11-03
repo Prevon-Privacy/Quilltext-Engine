@@ -133,13 +133,29 @@ bool moveTodoRowWithinRun(EditorState editorState, Node row, int targetIndex) {
 }
 
 // ── PREVON PATCH 10: collapsible "completed" section ───────────────────────
-/// The resolved [TodoListBlockKeys.completionStyle] of [row] (never null).
+/// What checking a box does in EVERY checklist (PREVON PATCH 35). The host sets this from its
+/// setting; one of [todoCompletionStrike], [todoCompletionSink], [todoCompletionDelete].
+/// A value that is none of those reads as [kTodoDefaultCompletionStyle].
+///
+/// [notifier] lets every checklist row on screen rebuild the moment the choice changes (no document edit happens when it does).
+class TodoCompletionHost {
+  TodoCompletionHost._();
+
+  static final ValueNotifier<String> notifier =
+      ValueNotifier<String>(kTodoDefaultCompletionStyle);
+
+  static String get style => notifier.value;
+  static set style(String value) => notifier.value = value;
+}
+
+/// The completion style every checklist row uses (never null). The per-list
+/// [TodoListBlockKeys.completionStyle] attribute of older notes is no longer read.
 String resolvedTodoCompletionStyle(Node row) {
-  final raw = row.attributes[TodoListBlockKeys.completionStyle];
+  final raw = TodoCompletionHost.style;
   if (raw == todoCompletionStrike ||
       raw == todoCompletionSink ||
       raw == todoCompletionDelete) {
-    return raw as String;
+    return raw;
   }
   return kTodoDefaultCompletionStyle;
 }
@@ -613,6 +629,7 @@ class _TodoListBlockComponentWidgetState
   void initState() {
     super.initState();
     _runViewSig = _runViewSignature();
+    TodoCompletionHost.notifier.addListener(_onCompletionStyleChanged);
     _runViewSub = editorState.transactionStream.listen((event) {
       if (!mounted || !_mayChangeRunView(event)) return;
       final sig = _runViewSignature();
@@ -621,6 +638,13 @@ class _TodoListBlockComponentWidgetState
         setState(() {});
       }
     });
+  }
+
+  /// The global "when checked" choice changed (PREVON PATCH 35): redraw this row (divider, strike) for the new style.
+  void _onCompletionStyleChanged() {
+    if (!mounted) return;
+    _runViewSig = _runViewSignature();
+    setState(() {});
   }
 
   /// A transaction can change the run view only after it has been applied, and
@@ -634,6 +658,7 @@ class _TodoListBlockComponentWidgetState
 
   @override
   void dispose() {
+    TodoCompletionHost.notifier.removeListener(_onCompletionStyleChanged);
     _runViewSub?.cancel();
     _groupSession?.dispose();
     _rowHovered.dispose();
@@ -882,7 +907,7 @@ class _TodoListBlockComponentWidgetState
       node: node,
       delegate: this,
       listenable: editorState.selectionNotifier,
-      remoteSelection: editorState.remoteSelections,
+      remoteSelection: editorState.remoteSelectionsIfEnabled,
       blockColor: editorState.editorStyle.selectionColor,
       supportTypes: const [
         BlockSelectionType.block,

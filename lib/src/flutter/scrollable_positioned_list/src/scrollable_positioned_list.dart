@@ -18,7 +18,7 @@ import 'post_mount_callback.dart';
 import 'scroll_offset_notifier.dart';
 
 /// Number of screens to scroll when scrolling a long distance.
-const int _screenScrollCount = 2;
+const double _screenScrollCount = 2;
 
 /// A scrollable list of widgets similar to [ListView], except scroll control
 /// and position reporting is based on index rather than pixel offset.
@@ -61,6 +61,7 @@ class ScrollablePositionedList extends StatefulWidget {
     this.indexOfItemId,
     this.addRepaintBoundaries = true,
     this.minCacheExtent,
+    this.cacheScreens = _screenScrollCount,
   })  : itemPositionsNotifier = itemPositionsListener as ItemPositionsNotifier?,
         scrollOffsetNotifier = scrollOffsetListener as ScrollOffsetNotifier?,
         separatorBuilder = null;
@@ -90,6 +91,7 @@ class ScrollablePositionedList extends StatefulWidget {
     this.indexOfItemId,
     this.addRepaintBoundaries = true,
     this.minCacheExtent,
+    this.cacheScreens = _screenScrollCount,
   })  : assert(separatorBuilder != null),
         itemPositionsNotifier = itemPositionsListener as ItemPositionsNotifier?,
         scrollOffsetNotifier = scrollOffsetListener as ScrollOffsetNotifier?;
@@ -190,6 +192,12 @@ class ScrollablePositionedList extends StatefulWidget {
   /// in builds of widgets that would otherwise already be built in the
   /// cache extent.
   final double? minCacheExtent;
+
+  /// PREVON PATCH 33: how many viewport heights of items are built beyond each
+  /// edge of the viewport (default 2, the original behaviour). Every built item
+  /// is live (listeners, keep-alive, text layout), so a page of blocks keeps this
+  /// small; see `EditorScrollController.cacheScreens`.
+  final double cacheScreens;
 
   @override
   State<StatefulWidget> createState() => _ScrollablePositionedListState();
@@ -514,7 +522,7 @@ class _ScrollablePositionedListState extends State<ScrollablePositionedList>
         (widget.scrollDirection == Axis.vertical
                 ? constraints.maxHeight
                 : constraints.maxWidth) *
-            _screenScrollCount,
+            widget.cacheScreens,
         widget.minCacheExtent ?? 0,
       );
 

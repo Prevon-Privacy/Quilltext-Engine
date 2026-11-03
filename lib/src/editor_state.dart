@@ -30,6 +30,10 @@ class EditorStateDebugInfo {
 /// set true to this key to prevent attaching the text service when selection is changed.
 const selectionExtraInfoDoNotAttachTextService =
     'selectionExtraInfoDoNotAttachTextService';
+/// the type of this value is bool.
+///
+/// set true to this key so the scroll service does not scroll the caret back into view for this update.
+const selectionExtraInfoDoNotAutoScroll = 'selectionExtraInfoDoNotAutoScroll';
 const _selectionDragModeKey = 'selection_drag_mode';
 
 class ApplyOptions {
@@ -139,6 +143,11 @@ class EditorState {
   /// The edge offset of the auto scroll.
   double autoScrollEdgeOffset = appFlowyEditorAutoScrollEdgeOffset;
 
+  /// True while a mouse drag is extending the selection. The pointer then owns the scrolling (the drag's
+  /// own auto-scroll); the keep-the-caret-in-view scroll that follows every selection change stands down,
+  /// or the two fight over the page with different bands and targets.
+  bool pointerSelecting = false;
+
   /// The style of the editor.
   late EditorStyle editorStyle;
 
@@ -157,6 +166,16 @@ class EditorState {
   /// Remote selection is the selection from other users.
   final PropertyValueNotifier<List<RemoteSelection>> remoteSelections =
       PropertyValueNotifier<List<RemoteSelection>>([]);
+
+  /// PREVON PATCH 33: remote (other users') selections are off by default. Each
+  /// block otherwise carries up to three listener layers for them, and this app
+  /// has no live co-editing. A host that feeds [remoteSelections] sets this
+  /// before the editor is built.
+  bool enableRemoteSelections = false;
+
+  /// What blocks pass as `remoteSelection:`: null while remote selections are off.
+  ValueListenable<List<RemoteSelection>>? get remoteSelectionsIfEnabled =>
+      enableRemoteSelections ? remoteSelections : null;
 
   /// Sets the selection of the editor.
   set selection(Selection? value) {
@@ -455,13 +474,49 @@ class EditorState {
         if (transaction.selectionExtraInfo != null) {
           selectionExtraInfo = transaction.selectionExtraInfo;
         }
-        selection = transaction.afterSelection;
+        selection = _keptInsideDocument(transaction.afterSelection);
       }
     }
 
     completer.complete();
 
     return completer.future;
+  }
+
+  /// A caret or range that points at a block which is no longer there (an undo removed it) or past the end
+  /// of its text is pulled back to the nearest place that exists. A selection that is already valid comes
+  /// back unchanged, so ordinary edits behave exactly as before.
+  Selection? _keptInsideDocument(Selection? value) {
+    if (value == null) return null;
+    final start = _positionInsideDocument(value.start);
+    final end = identical(value.start, value.end) || value.start == value.end
+        ? start
+        : _positionInsideDocument(value.end);
+    if (start == null || end == null) return null;
+    if (start == value.start && end == value.end) return value;
+    return Selection(start: start, end: end);
+  }
+
+  Position? _positionInsideDocument(Position p) {
+    if (document.root.children.isEmpty) return null;
+    var node = document.root;
+    final path = <int>[];
+    var clamped = false;
+    for (final i in p.path) {
+      final children = node.children;
+      if (children.isEmpty) break;
+      final index = i < children.length ? i : children.length - 1;
+      if (index != i) clamped = true;
+      node = children.elementAt(index);
+      path.add(index);
+      if (clamped) break;
+    }
+    if (path.isEmpty) return null;
+    final length = node.delta?.length ?? 0;
+    final wanted = clamped ? length : p.offset;
+    final offset = wanted > length ? length : (wanted < 0 ? 0 : wanted);
+    if (!clamped && path.length == p.path.length && offset == p.offset) return p;
+    return Position(path: path, offset: offset);
   }
 
   /// Force rebuild the editor.
@@ -644,9 +699,13 @@ class EditorState {
       late AutoScroller scroller;
       scroller = AutoScroller(
         scrollableState,
-        velocityScalar: 0.15,
-        minimumAutoScrollDelta: 0.07,
-        maxAutoScrollDelta: 3.5,
+        // Desktop: same curve as the scroll widget's scroller (see auto_scroller.dart).
+        velocityScalar: isDesktopOrWeb ? 1 : 0.08,
+        minimumAutoScrollDelta: isDesktopOrWeb ? kDesktopAutoScrollMinStep : 0.07,
+        maxAutoScrollDelta: isDesktopOrWeb ? kDesktopAutoScrollMaxStep : 1.8,
+        overDragMax: isDesktopOrWeb ? kDesktopAutoScrollOverDrag : 20,
+        frameLocked: isDesktopOrWeb,
+        rampExponent: kDesktopAutoScrollExponent,
         animationDuration: Duration.zero,
         onScrollViewScrolled: () {
           _notifyScrollViewScrolledListeners();
@@ -676,6 +735,10 @@ class EditorState {
     bool skipDebounce,
   ) {
     if (options.recordUndo) {
+      // A new edit ends the redo branch; a redo itself must keep the rest of it.
+      if (!undoManager.isRedoing && transaction.operations.isNotEmpty) {
+        undoManager.redoStack.clear();
+      }
       final undoItem = undoManager.getUndoHistoryItem();
       undoItem.addAll(transaction.operations);
       if (undoItem.beforeSelection == null &&

@@ -386,11 +386,9 @@ class _SelectionMenuWidgetState extends State<SelectionMenuWidget>
     }
   }
 
-  void _applyKeyword(String newKeyword) {
-    final previous = _keyword;
-    _keyword = newKeyword;
-    final query = newKeyword.trim().toLowerCase();
-
+  /// The rows for [keyword]: host ranking first, then the substring matches.
+  List<SelectionMenuItem> _matchItems(String keyword) {
+    final query = keyword.trim().toLowerCase();
     final substring = widget.items
         .where(
           (item) =>
@@ -400,18 +398,22 @@ class _SelectionMenuWidgetState extends State<SelectionMenuWidget>
         .toList(growable: false);
     // PREVON PATCH 18: host ranking first, then what the substring match found.
     final ranker = selectionMenuRanker;
-    final List<SelectionMenuItem> items;
     if (ranker == null || query.isEmpty) {
-      items = substring;
-    } else {
-      final ranked = ranker(query, widget.items);
-      final seen = ranked.toSet();
-      items = <SelectionMenuItem>[
-        ...ranked,
-        for (final item in substring)
-          if (!seen.contains(item)) item,
-      ];
+      return substring;
     }
+    final ranked = ranker(query, widget.items);
+    final seen = ranked.toSet();
+    return <SelectionMenuItem>[
+      ...ranked,
+      for (final item in substring)
+        if (!seen.contains(item)) item,
+    ];
+  }
+
+  void _applyKeyword(String newKeyword) {
+    final previous = _keyword;
+    _keyword = newKeyword;
+    final items = _matchItems(newKeyword);
 
     if (items.isEmpty) {
       _searchCounter++;
@@ -442,10 +444,14 @@ class _SelectionMenuWidgetState extends State<SelectionMenuWidget>
     if (sel != null && sel.isCollapsed && sel.end.offset > 0) {
       final t =
           widget.editorState.getNodeAtPath(sel.end.path)?.delta?.toPlainText();
-      if (t != null &&
-          sel.end.offset <= t.length &&
-          t[sel.end.offset - 1] == '/') {
-        _slashOffset = sel.end.offset - 1;
+      if (t != null && sel.end.offset <= t.length) {
+        // The menu may open on an existing `/word` (reopened after a delete),
+        // so find the trigger rather than assuming it is the previous char.
+        _slashOffset = findSlashTrigger(t, sel.end.offset);
+        if (_slashOffset >= 0 && _slashOffset < sel.end.offset - 1) {
+          WidgetsBinding.instance
+              .addPostFrameCallback((_) => _syncKeywordFromDocument());
+        }
       }
     }
     _txSub = widget.editorState.transactionStream.listen(
@@ -467,16 +473,38 @@ class _SelectionMenuWidgetState extends State<SelectionMenuWidget>
 
     keepEditorFocusNotifier.increase();
     // Touch: leave focus with the editor so its IME (soft keyboard) keeps
-    // delivering the typed search text.
-    if (!_touch) {
+    // delivering the typed search text. The editor then gets the Enter KEY
+    // (soft keyboards send one) and would split the line, so claim it before
+    // the focus tree sees it.
+    if (_touch) {
+      HardwareKeyboard.instance.addHandler(_onGlobalKey);
+      _globalKeyHandlerAdded = true;
+    } else {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _focusNode.requestFocus();
       });
     }
   }
 
+  bool _globalKeyHandlerAdded = false;
+
+  bool _onGlobalKey(KeyEvent event) {
+    if (event.logicalKey != LogicalKeyboardKey.enter &&
+        event.logicalKey != LogicalKeyboardKey.numpadEnter) {
+      return false;
+    }
+    if (event is KeyDownEvent) {
+      _selectHighlighted();
+    }
+    return true;
+  }
+
   @override
   void dispose() {
+    if (_globalKeyHandlerAdded) {
+      HardwareKeyboard.instance.removeHandler(_onGlobalKey);
+      _globalKeyHandlerAdded = false;
+    }
     _keyboardService?.unregisterInterceptor(this);
     _keyboardService = null;
     _txSub?.cancel();
@@ -759,6 +787,59 @@ class _SelectionMenuWidgetState extends State<SelectionMenuWidget>
 
   bool _isNewlineText(String text) => text == '\n' || text == '\r\n';
 
+  /// The text before a single trailing newline, or null when [text] does not
+  /// end in one (or has another newline inside it).
+  String? _beforeTrailingNewline(String text) {
+    final stripped = text.endsWith('\r\n')
+        ? text.substring(0, text.length - 2)
+        : text.endsWith('\n')
+            ? text.substring(0, text.length - 1)
+            : null;
+    if (stripped == null || stripped.contains('\n')) {
+      return null;
+    }
+    return stripped;
+  }
+
+  /// The IME batches fast typing: "/he" + Enter can arrive as ONE change
+  /// ("/" -> "/he\n"). Put the typed text into the node (replacing
+  /// [start]..[end] of the caret's node), refresh the filter from it, then pick
+  /// the highlighted row, exactly as if the keys had come one by one.
+  Future<bool> _typedThenEnter(int start, int end, String typed) async {
+    final selection = widget.editorState.selection;
+    if (selection == null || !selection.isCollapsed) {
+      return false;
+    }
+    final node = widget.editorState.getNodeAtPath(selection.end.path);
+    final length = node?.delta?.toPlainText().length;
+    if (node == null || length == null || start < 0 || start > end) {
+      return false;
+    }
+    if (end > length) {
+      return false;
+    }
+    if (end > start || typed.isNotEmpty) {
+      widget.onSelectionUpdate();
+      final transaction = widget.editorState.transaction;
+      if (end > start) {
+        transaction.deleteText(node, start, end - start);
+      }
+      if (typed.isNotEmpty) {
+        transaction.insertText(node, start, typed);
+      }
+      transaction.afterSelection = Selection.collapsed(
+        Position(path: node.path, offset: start + typed.length),
+      );
+      await widget.editorState.apply(transaction);
+    }
+    if (!mounted) {
+      return true;
+    }
+    _syncKeywordFromDocument();
+    _selectHighlighted();
+    return true;
+  }
+
   // --- AppFlowyKeyboardServiceInterceptor: Enter via the text-input channel.
 
   @override
@@ -767,11 +848,16 @@ class _SelectionMenuWidgetState extends State<SelectionMenuWidget>
     EditorState editorState,
     List<CharacterShortcutEvent> characterShortcutEvents,
   ) async {
-    if (!_isNewlineText(insertion.textInserted)) {
+    if (_isNewlineText(insertion.textInserted)) {
+      _selectHighlighted();
+      return true;
+    }
+    final typed = _beforeTrailingNewline(insertion.textInserted);
+    if (typed == null) {
       return false;
     }
-    _selectHighlighted();
-    return true;
+    final at = insertion.insertionOffset;
+    return _typedThenEnter(at, at, typed);
   }
 
   @override
@@ -787,11 +873,27 @@ class _SelectionMenuWidgetState extends State<SelectionMenuWidget>
     final added = replacement.replacementText;
     final onlyNewlineAdded = added.startsWith(replaced) &&
         _isNewlineText(added.substring(replaced.length));
-    if (!_isNewlineText(added) && !onlyNewlineAdded) {
+    if (_isNewlineText(added) || onlyNewlineAdded) {
+      _selectHighlighted();
+      return true;
+    }
+    // An autocorrected / composed word committed together with Enter.
+    final typed = _beforeTrailingNewline(added);
+    if (typed == null) {
       return false;
     }
-    _selectHighlighted();
-    return true;
+    // Autocorrect rewrote what the person typed ("/bu" -> "/by"). Keep the
+    // rewrite only when it still finds a row; otherwise the menu already shows
+    // the list for the typed text, so pick from that and ignore the rewrite.
+    final corrected = typed.substring(typed.lastIndexOf('/') + 1);
+    if (replaced.isNotEmpty &&
+        !typed.startsWith(replaced) &&
+        _matchItems(corrected).isEmpty) {
+      _selectHighlighted();
+      return true;
+    }
+    final range = replacement.replacedRange;
+    return _typedThenEnter(range.start, range.end, typed);
   }
 
   @override

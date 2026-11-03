@@ -101,6 +101,8 @@ class PageBlockComponent extends BlockComponentStatelessWidget {
 
       return ScrollablePositionedList.builder(
         shrinkWrap: scrollController.shrinkWrap,
+        cacheScreens: scrollController.cacheScreens,
+        minCacheExtent: 250,
         scrollDirection: Axis.vertical,
         itemCount: itemCount,
         itemId: (index) {

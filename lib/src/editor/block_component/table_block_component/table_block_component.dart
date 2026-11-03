@@ -306,7 +306,7 @@ class _TableBlockComponentWidgetState extends State<TableBlockComponentWidget>
       node: node,
       delegate: this,
       listenable: editorState.selectionNotifier,
-      remoteSelection: editorState.remoteSelections,
+      remoteSelection: editorState.remoteSelectionsIfEnabled,
       blockColor: editorState.editorStyle.selectionColor,
       supportTypes: const [
         BlockSelectionType.block,

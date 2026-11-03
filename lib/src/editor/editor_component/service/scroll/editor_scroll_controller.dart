@@ -20,6 +20,7 @@ class EditorScrollController {
     required this.editorState,
     this.shrinkWrap = false,
     ScrollController? scrollController,
+    this.cacheScreens = 0.5,
   }) {
     // if shrinkWrap is true, we will render the document with Column layout.
     // otherwise, we will render the document with ScrollablePositionedList.
@@ -54,6 +55,12 @@ class EditorScrollController {
 
   final EditorState editorState;
   final bool shrinkWrap;
+
+  /// PREVON PATCH 33: viewport heights of blocks built beyond each edge of the
+  /// page (Flutter's own ListView builds ~250 px; the original list built 2
+  /// screens, i.e. 3x the blocks on screen, each with live listeners). Raise it
+  /// only for a measured scroll-pop, and re-run `typing_rebuild_budget_test`.
+  final double cacheScreens;
 
   // provide the current scroll offset
   final ValueNotifier<double> offsetNotifier = ValueNotifier(0);

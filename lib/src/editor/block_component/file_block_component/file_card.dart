@@ -33,6 +33,30 @@ class FileCard extends StatelessWidget {
     final name = cleaned.isEmpty ? '—' : cleaned;
     final shown = middleEllipsis(name, 44);
     final detail = fileDetailLine(file);
+    // In a narrow slot (a card inside a folded block on a small screen) the tile, the gap and the
+    // "more" button shrink so the row still fits; the text column takes whatever is left.
+    return LayoutBuilder(builder: (context, c) {
+      final narrow = c.maxWidth < 190;
+      final tile = narrow ? 32.0 : 44.0;
+      final gap = narrow ? 8.0 : 12.0;
+      final moreWidth = narrow ? 28.0 : 40.0;
+      return _card(context, scheme, theme, tint, shown, detail, cleaned,
+          tile: tile, gap: gap, moreWidth: moreWidth);
+    });
+  }
+
+  Widget _card(
+    BuildContext context,
+    ColorScheme scheme,
+    ThemeData theme,
+    Color tint,
+    String shown,
+    String detail,
+    String cleaned, {
+    required double tile,
+    required double gap,
+    required double moreWidth,
+  }) {
     return Container(
       padding: const EdgeInsetsDirectional.fromSTEB(12, 10, 4, 10),
       decoration: BoxDecoration(
@@ -44,15 +68,15 @@ class FileCard extends StatelessWidget {
       child: Row(
         children: [
           Container(
-            width: 44,
-            height: 44,
+            width: tile,
+            height: tile,
             decoration: BoxDecoration(
               color: tint.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(10),
             ),
             child: Icon(fileIconFor(file.mime, cleaned), color: tint),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: gap),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -69,6 +93,10 @@ class FileCard extends StatelessWidget {
                   runSpacing: 2,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
+                    // A link to a file that lives in Files wears a small link mark so it never looks like a second copy.
+                    if (file.via != null)
+                      Icon(Icons.link_rounded,
+                          size: 14, color: scheme.onSurfaceVariant),
                     if (detail.isNotEmpty)
                       Text(
                         detail,
@@ -92,7 +120,7 @@ class FileCard extends StatelessWidget {
                 behavior: HitTestBehavior.opaque,
                 onTap: onMore,
                 child: SizedBox(
-                  width: 40,
+                  width: moreWidth,
                   height: 44,
                   child: Icon(Icons.more_horiz,
                       size: 20, color: scheme.onSurfaceVariant),

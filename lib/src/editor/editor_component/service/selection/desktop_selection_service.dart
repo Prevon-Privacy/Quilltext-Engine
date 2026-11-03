@@ -1,4 +1,5 @@
 import 'package:prevon_quilltext_engine/prevon_quilltext_engine.dart';
+import 'package:prevon_quilltext_engine/src/editor/editor_component/service/scroll/auto_scroller.dart';
 import 'package:prevon_quilltext_engine/src/editor/editor_component/service/selection/mobile_selection_service.dart';
 import 'package:prevon_quilltext_engine/src/editor/editor_component/service/selection/shared.dart';
 import 'package:prevon_quilltext_engine/src/service/selection/selection_gesture.dart';
@@ -152,6 +153,7 @@ class _DesktopSelectionServiceWidgetState
 
   void _resetPanState() {
     _isDraggingSelection = false;
+    editorState.pointerSelecting = false;
     _panStartOffset = null;
     _panStartScrollDy = null;
     _panStartPosition = null;
@@ -425,6 +427,7 @@ class _DesktopSelectionServiceWidgetState
 
     _lastPanOffset = _panStartOffset;
     _isDraggingSelection = true;
+    editorState.pointerSelecting = true;
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
@@ -447,7 +450,7 @@ class _DesktopSelectionServiceWidgetState
 
     editorState.service.scrollService?.startAutoScroll(
       _lastPanOffset!,
-      edgeOffset: 200,
+      edgeOffset: kDesktopAutoScrollBand * 2,
       duration: const Duration(milliseconds: 2),
     );
   }
