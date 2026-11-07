@@ -152,7 +152,9 @@ void main() {
       }
     });
 
-    testWidgets('$platform: swipe from the far edge indents even with caret',
+    // Superseded 2026-11-05 (was: "swipe from the far edge indents even with caret"): the screen edge belongs to the system back gesture
+    // (Android's inward edge swipe, iOS's 20pt interactive pop), so a swipe from there must not also indent. Same scenario, new outcome.
+    testWidgets('$platform: swipe from the far edge does NOT indent the caret row (the edge is the system back gesture)',
         (tester) async {
       debugDefaultTargetPlatformOverride = platform;
       try {
@@ -161,7 +163,8 @@ void main() {
         await tester.pumpAndSettle();
         final y = _center(state, [1]).dy;
         await _swipe(tester, Offset(8, y), 90);
-        expect(state.getNodeAtPath([0, 0])?.delta?.toPlainText(), 'two');
+        expect(state.getNodeAtPath([0, 0]), isNull, reason: 'nothing was nested under the first row');
+        expect(state.getNodeAtPath([1])?.delta?.toPlainText(), 'two', reason: 'the row stayed where it was');
       } finally {
         debugDefaultTargetPlatformOverride = null;
       }

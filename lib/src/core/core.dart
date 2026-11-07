@@ -1,4 +1,5 @@
 export 'document/attributes.dart';
+export 'document/block_id.dart';
 export 'document/deprecated/document.dart';
 export 'document/deprecated/node.dart';
 export 'document/diff.dart';

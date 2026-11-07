@@ -17,9 +17,15 @@ import 'package:prevon_quilltext_engine/src/service/selection/touch_drag_gate.da
 ///    `TouchDragHandleGate` so a finger the one-finger mode claimed still
 ///    counts), so no finger moves the caret.
 ///  * **One finger, on a row the caret is NOT in**, an EMPTY row (even with
-///    the caret in it: no text to drag a caret through), or from the 32px edge
-///    zone: a horizontal swipe indents. A non-empty caret row keeps
+///    the caret in it: no text to drag a caret through), or from a row's drag
+///    grip: a horizontal swipe indents. A non-empty caret row keeps
 ///    caret-drag. The caret follows a moved row (`indent_block_node.dart`).
+///    A one-finger swipe that STARTS within [_systemEdgeBand] of the SCREEN's
+///    left or right edge never indents, whatever row it is on (the row's drag
+///    grip is the left margin, which reaches the screen edge on a phone): the
+///    system back gesture starts there (Android's inward edge swipe, iOS's 20pt
+///    interactive pop), and a swipe from there must go back, not also indent
+///    (this detector is a raw `Listener`, so it would have run alongside it).
 ///
 /// Behaviour:
 ///  * The row is the innermost block under the finger (or the midpoint of the
@@ -84,14 +90,10 @@ class _TwoFingerIndentDetectorState extends State<TwoFingerIndentDetector> {
   EditorState? _historyHeld;
 
   /// One-finger mode: the block under a single touch that started on a row
-  /// the caret is NOT in (or in the far-edge zone). A horizontal swipe there
+  /// the caret is NOT in (or on a row's drag grip). A horizontal swipe there
   /// indents / outdents instead of dragging the caret.
   bool _single = false;
   int? _singlePointer;
-
-  /// Touches this close to the editor's left/right edge always swipe-indent,
-  /// even on the row the caret is in.
-  static const double _edgeZone = 32;
 
   void _reset() {
     final p = _singlePointer;
@@ -146,6 +148,9 @@ class _TwoFingerIndentDetectorState extends State<TwoFingerIndentDetector> {
     if (_start.length == 1) {
       _beginSingle(e);
     } else if (_start.length == 2) {
+      // A one-finger swipe that is already going is finished by a second finger landing (a pinch or a second touch is not a
+      // two-finger swipe, and its direction was never checked): nothing more moves until every finger is up.
+      if (_active) _ignore = true;
       _single = false;
       _armed = true;
       final a = _start.values.first;
@@ -157,20 +162,31 @@ class _TwoFingerIndentDetectorState extends State<TwoFingerIndentDetector> {
     }
   }
 
+  /// How close to the screen's left or right edge (logical px) a touch must start to be the system's back gesture, not ours. iOS's
+  /// interactive pop is the first 20pt; Android's back swipe is 24dp or more by default.
+  static const double _systemEdgeBand = 28;
+
+  bool _startsAtSystemEdge(Offset globalPosition) {
+    final view = View.maybeOf(context);
+    if (view == null) return false;
+    final width = view.physicalSize.width / view.devicePixelRatio;
+    return globalPosition.dx < _systemEdgeBand ||
+        globalPosition.dx > width - _systemEdgeBand;
+  }
+
   void _beginSingle(PointerDownEvent e) {
+    if (_startsAtSystemEdge(e.position)) return;
     final editorState = context.read<EditorState>();
     final box = editorState.renderBox;
-    // A touch that starts on a row's drag grip (the marker) swipes like the
-    // edge does, caret or not: the grip only owns the long-press drag, its own
-    // swipe never won the arena.
-    var atEdge = TouchDragHandleGate.isClaimed(e.pointer);
+    // A touch that starts on a row's drag grip (the marker) swipes even on the
+    // caret row: the grip only owns the long-press drag, its own swipe never
+    // won the arena.
+    final onGrip = TouchDragHandleGate.isClaimed(e.pointer);
     var probe = e.position;
     if (box != null && box.hasSize) {
-      final x = box.globalToLocal(e.position).dx;
-      atEdge = atEdge || x < _edgeZone || x > box.size.width - _edgeZone;
-      // The edge zone is the page margin, outside every block's box: look the
+      // The grip sits in the page margin, outside every block's box: look the
       // row up at the same height, mid-width.
-      if (atEdge) {
+      if (onGrip) {
         probe = box.localToGlobal(
           Offset(box.size.width / 2, box.globalToLocal(e.position).dy),
         );
@@ -197,7 +213,7 @@ class _TwoFingerIndentDetectorState extends State<TwoFingerIndentDetector> {
     // empty, or only spaces / zero-width marks (a row left with a stray space
     // looks empty and must swipe like one).
     final isEmptyRow = _isBlankRow(block);
-    if (caretInRow && !atEdge && !isEmptyRow) return;
+    if (caretInRow && !onGrip && !isEmptyRow) return;
 
     _single = true;
     _singlePointer = e.pointer;

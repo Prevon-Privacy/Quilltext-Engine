@@ -61,7 +61,7 @@ CommandShortcutEventHandler _deleteInCollapsedSelection = (editorState) {
     if (next != null && tableParent == nextTableParent) {
       if (next.children.isNotEmpty) {
         final path = node.path + [node.children.length];
-        transaction.insertNodes(path, next.children);
+        transaction.insertNodes(path, next.children, keepIds: true);
       }
       transaction
         ..deleteNode(next)

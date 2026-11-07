@@ -87,7 +87,7 @@ CommandShortcutEventHandler _backspaceInCollapsedSelection = (editorState) {
       final path = node.parent!.path.next;
       transaction
         ..deleteNode(node)
-        ..insertNode(path, node)
+        ..insertNode(path, node, keepIds: true)
         ..afterSelection = Selection.collapsed(
           Position(
             path: path,
@@ -128,6 +128,7 @@ CommandShortcutEventHandler _backspaceInCollapsedSelection = (editorState) {
             // insert children to previous node
             prev.path.next,
             node.children.toList(),
+            keepIds: true,
           )
           ..deleteNode(node)
           ..afterSelection = Selection.collapsed(

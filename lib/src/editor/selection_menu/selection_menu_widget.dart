@@ -785,6 +785,28 @@ class _SelectionMenuWidgetState extends State<SelectionMenuWidget>
     return true;
   }
 
+  /// True when [r] swaps the search word for different text (a keyboard
+  /// autocorrect commit), not a normal growing/shrinking of the composing word.
+  bool _isKeywordRewrite(TextEditingDeltaReplacement r) {
+    final replaced = r.textReplaced;
+    final added = r.replacementText;
+    if (_slashOffset < 0 ||
+        replaced.isEmpty ||
+        added.isEmpty ||
+        replaced == added ||
+        added.startsWith(replaced) ||
+        replaced.startsWith(added) ||
+        added.contains(RegExp(r'\s'))) {
+      return false;
+    }
+    final selection = widget.editorState.selection;
+    if (selection == null || !selection.isCollapsed) {
+      return false;
+    }
+    return r.replacedRange.start >= _slashOffset &&
+        r.replacedRange.end <= selection.end.offset;
+  }
+
   bool _isNewlineText(String text) => text == '\n' || text == '\r\n';
 
   /// The text before a single trailing newline, or null when [text] does not
@@ -874,6 +896,15 @@ class _SelectionMenuWidgetState extends State<SelectionMenuWidget>
     final onlyNewlineAdded = added.startsWith(replaced) &&
         _isNewlineText(added.substring(replaced.length));
     if (_isNewlineText(added) || onlyNewlineAdded) {
+      _selectHighlighted();
+      return true;
+    }
+    // PREVON PATCH 19 (Android): on Enter the keyboard commits its autocorrect
+    // ("/bu" -> "/by") as a bare rewrite of the word being typed and swallows
+    // the Enter itself, so no newline ever arrives. A rewrite of the search
+    // word is therefore the Enter: keep what the person typed (do not apply
+    // the rewrite) and pick the row highlighted for it.
+    if (_isKeywordRewrite(replacement)) {
       _selectHighlighted();
       return true;
     }

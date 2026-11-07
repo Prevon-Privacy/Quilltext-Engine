@@ -56,8 +56,6 @@ class _GutterReorderDetectorState extends State<GutterReorderDetector> {
   }
 
   Drag? _onStart(Offset position) {
-    // ignore: avoid_print
-    print('GUTTERDBG onStart $position');
     final editorState = context.read<EditorState>();
     final node = gutterReorderTarget(editorState, position);
     if (node == null) return null;
@@ -162,9 +160,6 @@ class _GutterDragRecognizer extends DelayedMultiDragGestureRecognizer {
 
   @override
   void addPointer(PointerDownEvent event) {
-    // ignore: avoid_print
-    print(
-        'GUTTERDBG addPointer pos=${event.position} kind=${event.kind} pad=${editorState.editorStyle.padding} target=${gutterReorderTarget(editorState, event.position)?.type} box=${editorState.renderBox?.size}');
     if (gutterReorderTarget(editorState, event.position) == null) return;
     // Keep the document-wide pan / long-press recognizers (caret drag, word
     // select) out of the arena for this finger so the hold is not raced.

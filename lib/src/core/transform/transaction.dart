@@ -52,8 +52,9 @@ class Transaction {
     Path path,
     Node node, {
     bool deepCopy = true,
+    bool keepIds = false,
   }) {
-    insertNodes(path, [node], deepCopy: deepCopy);
+    insertNodes(path, [node], deepCopy: deepCopy, keepIds: keepIds);
   }
 
   /// Inserts a sequence of [Node]s at the given [Path].
@@ -61,13 +62,15 @@ class Transaction {
     Path path,
     Iterable<Node> nodes, {
     bool deepCopy = true,
+    bool keepIds = false,
   }) {
     if (nodes.isEmpty) {
       return;
     }
     if (deepCopy) {
       // add `toList()` to prevent the redundant copy of the nodes when looping
-      nodes = nodes.map((e) => e.copyWith()).toList();
+      // [keepIds]: this insert is the second half of a MOVE, so the blocks stay the same blocks (docs/design/block-ids-spec-2026-11-05.md).
+      nodes = nodes.map((e) => e.copyWith(keepIds: keepIds)).toList();
     }
     add(
       InsertOperation(

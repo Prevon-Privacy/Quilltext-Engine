@@ -194,9 +194,13 @@ class Document {
 
   /// Encodes the [Document] into a JSON structure.
   ///
-  Map<String, Object> toJson() {
+  ///
+  /// [withIds] is the STORED form of a note body: every block carries its stable id and the body carries `"v": 2`
+  /// (docs/design/block-ids-spec-2026-11-05.md). The default is the old shape.
+  Map<String, Object> toJson({bool withIds = false}) {
     return {
-      'document': root.toJson(),
+      'document': root.toJson(withIds: withIds),
+      if (withIds) 'v': kStoredBodyVersion,
     };
   }
 }

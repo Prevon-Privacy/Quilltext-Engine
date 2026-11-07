@@ -220,6 +220,30 @@ void main() {
       ]);
     });
 
+    test(
+        'moving a column and unwrapping keep every block id (a move, not a copy)',
+        () {
+      final state = _state([
+        ['a1', 'a2'],
+        ['b1'],
+      ]);
+      List<String> ids() => [
+            for (final c in _columns(state).children)
+              for (final b in c.children) b.id,
+          ];
+      final before = ids();
+      final colIds = [for (final c in _columns(state).children) c.id];
+      expect(ColumnsActions.moveColumn(_columns(state), 0, 1, state), isTrue);
+      expect([for (final c in _columns(state).children) c.id],
+          [colIds[1], colIds[0]]);
+      expect(ids(), [before[2], before[0], before[1]]);
+      expect(ColumnsActions.unwrap(_columns(state), state), isTrue);
+      expect(
+        state.document.root.children.skip(1).take(3).map((n) => n.id),
+        [before[2], before[0], before[1]],
+      );
+    });
+
     test('move keeps each column\'s width with it', () {
       final state = _state(
         [
@@ -581,8 +605,7 @@ void main() {
               value: _CountingMenu(() => opened++),
               child: AppFlowyEditor(
                 editorState: state,
-                blockComponentBuilders:
-                    buildStandardBlockComponentBuilderMap(),
+                blockComponentBuilders: buildStandardBlockComponentBuilderMap(),
                 editorStyle: EditorStyle.mobile(),
               ),
             ),
@@ -704,8 +727,7 @@ void main() {
         ]);
         await t.tapAt(t.getCenter(find.text('a', findRichText: true)));
         await t.pump(const Duration(milliseconds: 400));
-        final before =
-            t.getSize(find.byType(ColumnBlockComponent).at(0)).width;
+        final before = t.getSize(find.byType(ColumnBlockComponent).at(0)).width;
         final divider = t.getCenter(find.byType(ColumnWidthResizer));
         final g = await t.startGesture(divider);
         for (var i = 1; i <= 8; i++) {
@@ -757,8 +779,7 @@ void main() {
               width: 560,
               child: AppFlowyEditor(
                 editorState: state,
-                blockComponentBuilders:
-                    buildStandardBlockComponentBuilderMap(),
+                blockComponentBuilders: buildStandardBlockComponentBuilderMap(),
                 editorStyle: EditorStyle.mobile(),
               ),
             ),
@@ -847,5 +868,6 @@ class _CountingMenu implements ColumnsMenuActions {
   Future<void> showColumnsMenu(
     BuildContext context,
     ColumnsMenuRequest request,
-  ) async => onOpen();
+  ) async =>
+      onOpen();
 }

@@ -182,7 +182,8 @@ class ColumnsActions {
       return false;
     }
     final original = cols[from];
-    final copy = original.copyWith();
+    final copy =
+        original.copyWith(keepIds: true); // a move: same blocks, same ids
     final transaction = editorState.transaction;
     if (to > from) {
       transaction
@@ -291,7 +292,7 @@ class ColumnsActions {
     // New blocks go in after the old block, then the old block goes: the other
     // order makes the transaction shift the insert path backwards.
     transaction
-      ..insertNodes(path.next, blocks)
+      ..insertNodes(path.next, blocks, keepIds: true)
       ..deleteNode(columns);
     final targetIndex = caretAtEnd ? blocks.length - 1 : 0;
     final target = blocks[targetIndex];
@@ -345,7 +346,7 @@ class ColumnsActions {
         transaction.deleteNode(columns);
       } else {
         transaction
-          ..insertNodes(columns.path.next, blocks)
+          ..insertNodes(columns.path.next, blocks, keepIds: true)
           ..deleteNode(columns);
       }
       editorState.apply(transaction, withUpdateSelection: false);

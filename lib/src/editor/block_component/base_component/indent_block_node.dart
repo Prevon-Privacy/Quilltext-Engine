@@ -115,7 +115,7 @@ Node? tryIndentBlockNode(EditorState editorState, Node node) {
   final target = [...previous.path, previous.children.length];
   final transaction = editorState.transaction
     ..deleteNode(node)
-    ..insertNodes(target, [node], deepCopy: true);
+    ..insertNodes(target, [node], deepCopy: true, keepIds: true);
   _applyMove(editorState, transaction, node.path, target);
   return editorState.getNodeAtPath(target);
 }
@@ -128,7 +128,7 @@ Node? tryOutdentBlockNode(EditorState editorState, Node node) {
     ..add(parent.path.last + 1);
   final transaction = editorState.transaction
     ..deleteNode(node)
-    ..insertNodes(target, [node], deepCopy: true);
+    ..insertNodes(target, [node], deepCopy: true, keepIds: true);
   _applyMove(editorState, transaction, node.path, target);
   return editorState.getNodeAtPath(target);
 }
