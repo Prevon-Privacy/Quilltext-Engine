@@ -4,6 +4,7 @@ import 'dart:collection';
 import 'package:prevon_quilltext_engine/prevon_quilltext_engine.dart';
 import 'package:prevon_quilltext_engine/src/editor/editor_component/service/scroll/auto_scroller.dart';
 import 'package:prevon_quilltext_engine/src/editor/util/platform_extension.dart';
+import 'package:prevon_quilltext_engine/src/history/remote_undo_barrier.dart';
 import 'package:prevon_quilltext_engine/src/history/undo_manager.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -442,6 +443,8 @@ class EditorState {
     final completer = Completer<void>();
 
     if (isRemote) {
+      // Undo barrier: remote edits are never undoable and must not leave a local Undo aimed at them (remote_undo_barrier.dart).
+      transaction.operations.forEach(undoManager.remoteOperation);
       _selectionUpdateReason = SelectionUpdateReason.remote;
       selection = _applyTransactionFromRemote(transaction);
     } else {

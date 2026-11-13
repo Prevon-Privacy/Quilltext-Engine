@@ -116,7 +116,10 @@ FileFamily fileFamilyOf(String mime, String name) {
       ext(['zip', 'tar', 'gz', 'tgz', '7z', 'rar'])) {
     return FileFamily.archive;
   }
-  if (m.startsWith('text/') || m.contains('json') || m.contains('xml')) {
+  if (m.startsWith('text/') ||
+      m.contains('json') ||
+      m.contains('xml') ||
+      m.contains('yaml')) {
     return FileFamily.text;
   }
   return FileFamily.other;

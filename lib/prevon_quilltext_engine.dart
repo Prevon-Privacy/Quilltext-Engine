@@ -18,6 +18,7 @@ export 'src/editor/image_actions.dart';
 export 'src/service/selection/touch_drag_gate.dart' show TouchDragHandleGate;
 export 'src/editor/image_text_scanner.dart';
 export 'src/editor/local_image_policy.dart';
+export 'src/editor/remote_block_edit.dart';
 export 'src/editor/remote_image_policy.dart';
 export 'src/editor/find_replace_menu/find_and_replace.dart';
 export 'src/editor/l10n/prevon_quilltext_engine_l10n.dart';

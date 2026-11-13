@@ -356,8 +356,8 @@ void main() {
         (tester) async {
       debugDefaultTargetPlatformOverride = TargetPlatform.android;
       try {
-        // Plain paragraphs no longer nest (owner decision 2026-11-02); see paragraph_indent_gap_test.dart.
         for (final type in [
+          'paragraph',
           'bulleted_list',
           'numbered_list',
           'todo_list',

@@ -467,48 +467,27 @@ String formatFileSize(int bytes) {
   return '${v.toStringAsFixed(v >= 100 ? 0 : 1)} ${units[i]}';
 }
 
+/// The glyph of a file: one per [FileFamily] (see `fileFamilyOf`, the one place that decides the family), plus a book for an e-book,
+/// which the family calls a document. Deriving it from the family means an icon can never disagree with the chip or label.
 IconData fileIconFor(String mime, String name) {
-  final m = mime.toLowerCase();
-  final n = name.toLowerCase();
-  bool ext(List<String> exts) => exts.any((e) => n.endsWith('.$e'));
-  if (m == 'application/pdf' || n.endsWith('.pdf')) {
-    return Icons.picture_as_pdf_outlined;
-  }
-  if (m.startsWith('image/')) return Icons.image_outlined;
-  if (m.startsWith('audio/')) return Icons.audiotrack_outlined;
-  if (m.startsWith('video/')) return Icons.videocam_outlined;
-  if (m.contains('presentation') || ext(['ppt', 'pptx', 'odp', 'key'])) {
-    return Icons.slideshow_outlined;
-  }
-  if (m.contains('spreadsheet') ||
-      m.contains('ms-excel') ||
-      m == 'text/csv' ||
-      m == 'text/tab-separated-values' ||
-      ext(['csv', 'tsv', 'xls', 'xlsx', 'ods', 'numbers'])) {
-    return Icons.table_chart_outlined;
-  }
-  if (m.contains('wordprocessing') ||
-      m.contains('msword') ||
-      m.contains('opendocument.text') ||
-      m == 'application/rtf' ||
-      ext(['doc', 'docx', 'odt', 'rtf', 'pages'])) {
-    return Icons.description_outlined;
-  }
-  if (m == 'application/epub+zip' || n.endsWith('.epub')) {
+  final family = fileFamilyOf(mime, name);
+  if (family == FileFamily.doc &&
+      (mime.toLowerCase() == 'application/epub+zip' ||
+          name.toLowerCase().endsWith('.epub'))) {
     return Icons.menu_book_outlined;
   }
-  if (m.contains('zip') ||
-      m.contains('x-tar') ||
-      m.contains('gzip') ||
-      m.contains('7z') ||
-      m.contains('rar') ||
-      ext(['zip', 'tar', 'gz', 'tgz', '7z', 'rar'])) {
-    return Icons.folder_zip_outlined;
-  }
-  if (m.startsWith('text/') || m.contains('json') || m.contains('xml')) {
-    return Icons.article_outlined;
-  }
-  return Icons.insert_drive_file_outlined;
+  return switch (family) {
+    FileFamily.pdf => Icons.picture_as_pdf_outlined,
+    FileFamily.image => Icons.image_outlined,
+    FileFamily.audio => Icons.audiotrack_outlined,
+    FileFamily.video => Icons.videocam_outlined,
+    FileFamily.slides => Icons.slideshow_outlined,
+    FileFamily.sheet => Icons.table_chart_outlined,
+    FileFamily.doc => Icons.description_outlined,
+    FileFamily.archive => Icons.folder_zip_outlined,
+    FileFamily.text => Icons.article_outlined,
+    FileFamily.other => Icons.insert_drive_file_outlined,
+  };
 }
 
 extension InsertFile on EditorState {

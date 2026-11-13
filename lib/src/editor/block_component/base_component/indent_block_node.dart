@@ -17,11 +17,6 @@ import 'package:flutter/widgets.dart';
 ///   [indentWouldFit]. The row's text keeps wrapping inside that narrower
 ///   column, so wrapped lines stay inside the indent (hanging indent).
 
-/// Plain paragraphs are never pushed in (owner decision 2026-11-02: a paragraph nested and moved back
-/// out sat flush against the one above). Lists, headings and the rest still nest, and a paragraph that is
-/// already nested in an older note can still be moved out.
-bool canNestUnder(Node node) => node.type != ParagraphBlockKeys.type;
-
 /// Block types that can be moved into / out of a parent by indentation.
 const Set<String> movableBlockTypes = {
   BulletedListBlockKeys.type,
@@ -89,8 +84,7 @@ bool canIndentBlockNode(EditorState editorState, Node node) {
   final previous = node.previous;
   if (previous == null ||
       !indentableBlockTypes.contains(previous.type) ||
-      !movableBlockTypes.contains(node.type) ||
-      !canNestUnder(node)) {
+      !movableBlockTypes.contains(node.type)) {
     return false;
   }
   return indentWouldFit(editorState, previous, node);

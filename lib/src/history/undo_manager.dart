@@ -80,6 +80,14 @@ class FixedSizeStack {
 
   HistoryItem get last => _list.last;
 
+  /// The items, oldest first (a copy: safe to change the stack while walking it).
+  List<HistoryItem> toList() => _list.toList();
+
+  /// Removes [item] if it is in this stack (the remote-edit undo barrier uses it).
+  void removeItem(HistoryItem item) {
+    if (identical(item.list, _list)) _list.remove(item);
+  }
+
   bool get isEmpty => _list.isEmpty;
 
   bool get isNonEmpty => _list.isNotEmpty;

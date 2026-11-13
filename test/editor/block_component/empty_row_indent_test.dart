@@ -68,9 +68,8 @@ void main() {
             final p = box.localToGlobal(
                 Offset(box.size.width * frac, box.size.height / 2));
             await _swipe(tester, p, 90);
-            // A plain paragraph no longer nests (owner decision 2026-11-02): it stays a sibling.
-            expect(s.document.root.children.length, e.key == 'paragraph' ? 2 : 1,
-                reason: 'empty row should nest under "one" (paragraphs stay put)');
+            expect(s.document.root.children.length, 1,
+                reason: 'empty row should nest under "one"');
           } finally {
             PlatformExtension.debugMobileOverride = null;
             debugDefaultTargetPlatformOverride = null;

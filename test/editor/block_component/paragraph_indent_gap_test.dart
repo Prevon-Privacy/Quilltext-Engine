@@ -1,6 +1,5 @@
-// Plain paragraphs are never indented (owner decision 2026-11-02: a nested paragraph moved back out sat
-// flush against the one above). A paragraph already nested in an older note still moves out, and where
-// it lands keeps the same gap to the paragraph above.
+// Plain paragraphs indent like headings and lists (owner 2026-11-08, replacing the 2026-11-02 block).
+// Moving one back out keeps the same gap to the paragraph above.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:prevon_quilltext_engine/prevon_quilltext_engine.dart';
@@ -33,14 +32,21 @@ Future<EditorState> _pump(WidgetTester tester, List<Node> nodes) async {
 }
 
 void main() {
-  testWidgets('a paragraph cannot be indented by swipe helper or Tab',
+  testWidgets('a paragraph indents by swipe helper and Tab, and outdents with its gap',
       (tester) async {
     final s = await _pump(
         tester, [paragraphNode(text: 'above'), paragraphNode(text: 'below')]);
-    expect(tryIndentBlockNode(s, s.getNodeAtPath([1])!), isNull);
+    final gapBefore = _top(s, [1]) - _bottom(s, [0]);
     s.selection = Selection.collapsed(Position(path: [1]));
-    expect(isIndentable(s), isFalse);
+    expect(isIndentable(s), isTrue);
+    expect(tryIndentBlockNode(s, s.getNodeAtPath([1])!), isNotNull);
+    await tester.pumpAndSettle();
+    expect(s.document.root.children.length, 1);
+    expect(s.getNodeAtPath([0, 0])!.type, ParagraphBlockKeys.type);
+    expect(tryOutdentBlockNode(s, s.getNodeAtPath([0, 0])!), isNotNull);
+    await tester.pumpAndSettle();
     expect(s.document.root.children.length, 2);
+    expect(_top(s, [1]) - _bottom(s, [0]), gapBefore);
   });
 
   testWidgets('a list row still indents under a paragraph', (tester) async {
