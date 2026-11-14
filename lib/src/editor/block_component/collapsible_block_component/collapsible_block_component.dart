@@ -747,7 +747,7 @@ class _CollapsibleToggleState extends State<_CollapsibleToggle> {
                 child: AnimatedRotation(
                   turns: widget.closed ? 0 : (widget.rtl ? -0.25 : 0.25),
                   duration: _ms(context, 220),
-                  curve: Curves.easeOutBack,
+                  curve: Curves.easeOutCubic,
                   child: Icon(
                     widget.rtl ? Icons.chevron_left : Icons.chevron_right,
                     size: 22 * scale,
