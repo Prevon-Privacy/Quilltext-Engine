@@ -180,6 +180,14 @@ class KeyboardServiceWidgetState extends State<KeyboardServiceWidget>
       return KeyEventResult.ignored;
     }
 
+    // A text field living inside the editor (the note title) owns its own keys:
+    // the body's stale selection must not take Delete / Backspace from it.
+    final focusContext = FocusManager.instance.primaryFocus?.context;
+    if (focusContext != null &&
+        focusContext.findAncestorWidgetOfExactType<EditableText>() != null) {
+      return KeyEventResult.ignored;
+    }
+
     if ((event is! KeyDownEvent && event is! KeyRepeatEvent) ||
         !enableIMEShortcuts) {
       if (textInputService.composingTextRange != TextRange.empty) {
