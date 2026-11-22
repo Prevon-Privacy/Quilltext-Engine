@@ -5,6 +5,7 @@ import 'package:prevon_quilltext_engine/prevon_quilltext_engine.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:prevon_quilltext_engine/src/editor/util/smart_word_pick.dart';
 import 'package:provider/provider.dart';
 
 typedef TextSpanDecoratorForAttribute = InlineSpan Function(
@@ -320,18 +321,27 @@ class _AppFlowyRichTextState extends State<AppFlowyRichText>
     final localOffset = _renderParagraph?.globalToLocal(offset) ?? Offset.zero;
     final textPosition = _renderParagraph?.getPositionForOffset(localOffset) ??
         const TextPosition(offset: 0);
-    final textRange =
-        _renderParagraph?.getWordBoundary(textPosition) ?? TextRange.empty;
+    final textRange = _smartWord(textPosition);
     final start = Position(path: widget.node.path, offset: textRange.start);
     final end = Position(path: widget.node.path, offset: textRange.end);
     return Selection(start: start, end: end);
   }
 
+  /// PREVON PATCH 25: the word the finger meant (see [smartWordRange]).
+  TextRange _smartWord(TextPosition textPosition) {
+    final paragraph = _renderParagraph;
+    if (paragraph == null) return TextRange.empty;
+    return smartWordRange(
+      paragraph.text.toPlainText(),
+      textPosition.offset,
+      paragraph.getWordBoundary(textPosition),
+    );
+  }
+
   @override
   Selection? getWordBoundaryInPosition(Position position) {
     final textPosition = TextPosition(offset: position.offset);
-    final textRange =
-        _renderParagraph?.getWordBoundary(textPosition) ?? TextRange.empty;
+    final textRange = _smartWord(textPosition);
     final start = Position(path: widget.node.path, offset: textRange.start);
     final end = Position(path: widget.node.path, offset: textRange.end);
     return Selection(start: start, end: end);
