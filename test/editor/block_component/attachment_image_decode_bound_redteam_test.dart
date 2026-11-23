@@ -18,6 +18,11 @@ class _Loader implements AttachmentImageLoader {
   String? attachmentIdFromSrc(String src) => 'x';
   @override
   Future<Uint8List> loadAttachment(String attachmentId) async => bytes;
+  // The loader gained two members with defaults; `implements` does not inherit them.
+  @override
+  Future<bool> shouldBlur(String attachmentId) async => false;
+  @override
+  void onPictureRevealed(String attachmentId) {}
 }
 
 Future<Uint8List> _realPng(int w, int h) async {
