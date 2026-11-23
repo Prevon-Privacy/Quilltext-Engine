@@ -117,6 +117,9 @@ mixin NestedBlockComponentStatefulWidgetMixin<
     super.initState();
 
     WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
+      // The block can be removed in the same frame (a delete or an indent
+      // that rebuilds the row): setState on an unmounted State throws.
+      if (!mounted) return;
       final left =
           node.selectable?.getBlockRect(shiftWithBaseOffset: true).left;
       if (cachedLeft != left) {
