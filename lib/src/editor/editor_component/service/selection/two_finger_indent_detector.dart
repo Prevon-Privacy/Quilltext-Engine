@@ -237,7 +237,10 @@ class _TwoFingerIndentDetectorState extends State<TwoFingerIndentDetector> {
   }
 
   void _onMove(PointerMoveEvent e) {
-    if (!_now.containsKey(e.pointer)) return;
+    // The editor can rebuild under a swipe (a moved row remounts this subtree):
+    // the finger's events still reach this State, and `context` on an unmounted
+    // State throws (crash report PR-00A41A).
+    if (!mounted || !_now.containsKey(e.pointer)) return;
     _now[e.pointer] = e.position;
     // A row is being picked up and dragged: sideways drift is not a swipe.
     if (reorderDraggingNode.value != null) return;
