@@ -62,6 +62,9 @@ Widget headingMenuGlyph(
           fontSize: sizes[(level - 1).clamp(0, 2)],
           fontWeight: FontWeight.w800,
           height: 1,
+          // No Material ancestor here: without this Flutter paints its
+          // yellow double-underline "missing Material" fallback.
+          decoration: TextDecoration.none,
           color: isSelected
               ? style.selectionMenuItemSelectedIconColor
               : style.selectionMenuItemIconColor,
