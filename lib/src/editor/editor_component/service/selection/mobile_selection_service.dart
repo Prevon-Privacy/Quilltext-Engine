@@ -666,6 +666,7 @@ class _MobileSelectionServiceWidgetState
 
   void _onTapUpIOS(TapUpDetails details) {
     final offset = details.globalPosition;
+    _firstTapPosition = null;
 
     // if the tap happens on a selection area, don't change the selection
     if (_isClickOnSelectionArea(offset)) {
@@ -684,6 +685,7 @@ class _MobileSelectionServiceWidgetState
     clearSelection();
 
     final tappedPosition = getPositionInOffset(offset);
+    _rememberTap(tappedPosition);
     if (tappedPosition != null &&
         openNoteLinkAtPosition(editorState, tappedPosition, offset)) {
       return;
@@ -716,11 +718,32 @@ class _MobileSelectionServiceWidgetState
     }
   }
 
+  /// PREVON PATCH 25: the document spot the previous tap hit. The first tap
+  /// brings the keyboard up, which resizes and scrolls the page, so by the time
+  /// the second tap lands the same screen spot can be over a different word.
+  /// The person aimed at the first one: a double tap selects THAT word.
+  Position? _firstTapPosition;
+
+  /// Only the detector decides whether a tap is a double tap (by the clock the
+  /// touch events carry), so this holds the LAST tap's spot and nothing else.
+  void _rememberTap(Position? position) => _firstTapPosition = position;
+
   void _onDoubleTapUp(TapUpDetails details) {
     final offset = details.globalPosition;
-    final node = getNodeInOffset(offset);
-    // select word boundary closest to offset
-    final selection = node?.selectable?.getWordBoundaryInOffset(offset);
+    final first = _firstTapPosition;
+    _firstTapPosition = null;
+    Selection? selection;
+    if (first != null) {
+      selection = editorState
+          .getNodeAtPath(first.path)
+          ?.selectable
+          ?.getWordBoundaryInPosition(first);
+    }
+    if (selection == null) {
+      final node = getNodeInOffset(offset);
+      // select word boundary closest to offset
+      selection = node?.selectable?.getWordBoundaryInOffset(offset);
+    }
     if (selection == null) {
       clearSelection();
       return;
@@ -841,12 +864,14 @@ class _MobileSelectionServiceWidgetState
 
   void _onTapUpAndroid(TapUpDetails details) {
     final offset = details.globalPosition;
+    _firstTapPosition = null;
 
     final selectionBeforeTap = editorState.selection;
     clearSelection();
 
     // make a collapsed selection at offset
     final position = getPositionInOffset(offset);
+    _rememberTap(position);
     if (position == null) {
       return;
     }

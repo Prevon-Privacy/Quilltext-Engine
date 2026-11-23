@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -47,15 +45,51 @@ class MobileSelectionGestureDetector extends StatefulWidget {
 
 class MobileSelectionGestureDetectorState
     extends State<MobileSelectionGestureDetector> {
-  bool _isDoubleTap = false;
-  Timer? _doubleTapTimer;
-  int _tripleTapCount = 0;
-  Timer? _tripleTapTimer;
+  /// 1 after a single tap, 2 after a double tap; a third completes a triple.
+  int _tapCount = 0;
 
-  final kTripleTapTimeout = const Duration(milliseconds: 500);
+  /// PREVON PATCH 25: where the previous tap lifted. A second tap far from it
+  /// is a new tap elsewhere, not a double tap: two quick taps on different
+  /// words used to select the second word instead of just placing the caret.
+  Offset? _lastTapAt;
+
+  /// PREVON PATCH 25: taps are timed by the clock the touch events carry, never
+  /// by a Timer. A Timer keeps ticking while the UI thread is busy, and the
+  /// first tap of a double tap is exactly when it is: it opens the keyboard,
+  /// which resizes the page for 100 ms or more. The second tap's event then sat
+  /// in the queue until the Timer had already ended the double-tap window, so
+  /// the double tap was lost and read as two single taps. Event timestamps are
+  /// stamped when the finger touches the glass, so a busy frame cannot change
+  /// the gap.
+  Duration? _lastUpAt; // when the previous tap lifted
+  Duration? _thisUpAt; // when the tap being delivered lifted
+
+  /// Synthetic events (tests, injected input) carry no stamp: a real monotonic
+  /// clock stands in for them.
+  final Stopwatch _fallbackClock = Stopwatch()..start();
+
+  Duration _stampOf(PointerEvent e) =>
+      e.timeStamp == Duration.zero ? _fallbackClock.elapsed : e.timeStamp;
+
+  /// A deliberate double tap lands within a fingertip of the first tap.
+  static const double kMobileDoubleTapSlop = 48;
+
+  /// A touch double tap is allowed a little longer than the platform's 300 ms:
+  /// the first tap's own work (keyboard, handles) delays the finger's second
+  /// tap more than it does a mouse click.
+  static const Duration kMobileDoubleTapTimeout = Duration(milliseconds: 400);
 
   @override
   Widget build(BuildContext context) {
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      // Runs before the recognizers see the same event (child-to-root order).
+      onPointerUp: (e) => _thisUpAt = _stampOf(e),
+      child: _gestures(),
+    );
+  }
+
+  Widget _gestures() {
     return RawGestureDetector(
       behavior: HitTestBehavior.opaque,
       gestures: {
@@ -111,46 +145,32 @@ class MobileSelectionGestureDetectorState
   }
 
   void _tapDownDelegate(TapUpDetails tapDownDetails) {
-    if (_tripleTapCount == 2) {
-      _tripleTapCount = 0;
-      _tripleTapTimer?.cancel();
-      _tripleTapTimer = null;
-      if (widget.onTripleTapUp != null) {
-        widget.onTripleTapUp!(tapDownDetails);
-      }
-    } else if (_isDoubleTap) {
-      _isDoubleTap = false;
-      _doubleTapTimer?.cancel();
-      _doubleTapTimer = null;
-      if (widget.onDoubleTapUp != null) {
-        widget.onDoubleTapUp!(tapDownDetails);
-      }
-      _tripleTapCount++;
+    final now = _thisUpAt ?? _fallbackClock.elapsed;
+    _thisUpAt = null;
+    final lastAt = _lastUpAt;
+    final lastPos = _lastTapAt;
+    _lastUpAt = now;
+    _lastTapAt = tapDownDetails.globalPosition;
+
+    // Only a tap soon enough after, and near enough to, the previous one
+    // continues a multi-tap; anything else starts over as a single tap.
+    // (`now >= lastAt`: stamps from two clocks never mix into a false multi-tap.)
+    final continues = lastAt != null &&
+        lastPos != null &&
+        now >= lastAt &&
+        now - lastAt <= kMobileDoubleTapTimeout &&
+        (tapDownDetails.globalPosition - lastPos).distance <=
+            kMobileDoubleTapSlop;
+    if (!continues) _tapCount = 0;
+    _tapCount++;
+
+    if (_tapCount == 2) {
+      widget.onDoubleTapUp?.call(tapDownDetails);
+    } else if (_tapCount == 3) {
+      _tapCount = 0;
+      widget.onTripleTapUp?.call(tapDownDetails);
     } else {
-      if (widget.onTapUp != null) {
-        widget.onTapUp!(tapDownDetails);
-      }
-
-      _isDoubleTap = true;
-      _doubleTapTimer?.cancel();
-      _doubleTapTimer = Timer(kDoubleTapTimeout, () {
-        _isDoubleTap = false;
-        _doubleTapTimer = null;
-      });
-
-      _tripleTapCount = 1;
-      _tripleTapTimer?.cancel();
-      _tripleTapTimer = Timer(kTripleTapTimeout, () {
-        _tripleTapCount = 0;
-        _tripleTapTimer = null;
-      });
+      widget.onTapUp?.call(tapDownDetails);
     }
-  }
-
-  @override
-  void dispose() {
-    _doubleTapTimer?.cancel();
-    _tripleTapTimer?.cancel();
-    super.dispose();
   }
 }
