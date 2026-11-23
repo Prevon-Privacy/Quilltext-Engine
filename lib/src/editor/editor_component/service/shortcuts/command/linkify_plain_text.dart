@@ -21,7 +21,6 @@
 //      3-second autosave flush unharmed even when the document already
 //      has no trailing whitespace/newline.
 
-import 'package:flutter/foundation.dart';
 import 'package:prevon_quilltext_engine/prevon_quilltext_engine.dart';
 
 import 'url_phone_regex.dart';

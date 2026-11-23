@@ -177,7 +177,7 @@ class AttachmentImageProvider extends ImageProvider<AttachmentImageProvider> {
       }
     }
     // Header first: a hostile size is refused, a huge picture decoded straight to a bounded size.
-    return decodeGuardedBounded(bytes!, decode, maxPixels: maxDecodePixels);
+    return decodeGuardedBounded(bytes, decode, maxPixels: maxDecodePixels);
   }
 
   @override

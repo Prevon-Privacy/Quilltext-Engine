@@ -1,6 +1,5 @@
 import 'package:prevon_quilltext_engine/prevon_quilltext_engine.dart';
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 
 /// PREVON PATCH 26 — the collapsible block ("toggle"): a one-line title with a
 /// chevron that hides or shows everything nested under it, instantly. Same idea
