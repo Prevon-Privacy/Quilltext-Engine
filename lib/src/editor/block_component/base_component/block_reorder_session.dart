@@ -5,9 +5,11 @@ import 'package:flutter/widgets.dart';
 /// the per-row grip ([BlockHoverActionHandle]) and the left-margin hold
 /// ([GutterReorderDetector]).
 ///
-/// It moves [node] among its OWN siblings only — never across parents or
-/// nesting levels — drawing the drop indicator, auto-scrolling near the edges
-/// and ticking when the slot changes. Every method is idempotent so a caller
+/// It moves [node] (with its subtree) to the slot under the pointer, at any
+/// depth ([resolveReorderDrop]): between rows, below the last nested row, or at
+/// the end of the note, the pointer's x choosing among the levels that fit. It
+/// draws the drop indicator, auto-scrolls near the edges and ticks when the
+/// slot changes. Every method is idempotent so a caller
 /// may end the gesture from more than one place.
 class BlockReorderSession {
   BlockReorderSession(this.editorState, this.node, {this.onDrop});
@@ -35,12 +37,10 @@ class BlockReorderSession {
     _lastGlobal = global;
     editorState.selectionService.renderDropTargetForOffset(
       global,
-      interceptor: _clampDropToParent,
+      interceptor: _anchorForPointer,
     );
     editorState.scrollService?.startAutoScroll(global);
-    final slot = editorState.selectionService
-        .getDropTargetRenderData(global, interceptor: _clampDropToParent)
-        ?.dropPath;
+    final slot = resolveReorderDrop(editorState, node, global)?.target;
     if (slot != null &&
         (_lastTickPath == null || !slot.equals(_lastTickPath!))) {
       if (_lastTickPath != null) reorderDropTick();
@@ -61,18 +61,16 @@ class BlockReorderSession {
     _lastGlobal = null;
     if (!dropped || !wasActive || global == null) return;
 
-    final data = editorState.selectionService.getDropTargetRenderData(
-      global,
-      interceptor: _clampDropToParent,
-    );
-    final dropPath = data?.dropPath;
-    if (dropPath == null) return;
-    // Never reorder across parents/nesting levels — only among siblings.
-    if (!dropPath.parent.equals(node.path.parent)) return;
-    if (onDrop != null) {
-      onDrop!(dropPath.last);
+    final drop = resolveReorderDrop(editorState, node, global);
+    if (drop == null) return;
+    if (drop.target.parent.equals(node.path.parent)) {
+      if (onDrop != null) {
+        onDrop!(drop.target.last);
+      } else {
+        moveNodeAmongSiblings(editorState, node, drop.target.last);
+      }
     } else {
-      moveNodeAmongSiblings(editorState, node, dropPath.last);
+      moveBlockTo(editorState, node, drop.target);
     }
   }
 
@@ -86,17 +84,151 @@ class BlockReorderSession {
     }
   }
 
-  /// Keeps the drop indicator within the dragged block's own parent: any
-  /// hovered node outside that sibling set resolves to the nearest boundary
-  /// sibling.
-  Node _clampDropToParent(BuildContext context, Node candidate) {
-    final parent = node.parent;
-    if (parent == null) return candidate;
-
-    Node? c = candidate;
-    while (c != null && c.parent != parent) {
-      c = c.parent;
-    }
-    return c ?? parent.children.first;
+  /// The row the drop indicator is drawn against: the resolved slot's anchor,
+  /// whatever node the selection service hit under the pointer.
+  Node _anchorForPointer(BuildContext context, Node candidate) {
+    final global = _lastGlobal;
+    if (global == null) return candidate;
+    return resolveReorderDrop(editorState, node, global)?.anchor ?? candidate;
   }
+}
+
+/// Where a dragged block lands: [target] is the slot (a path in the document
+/// before the move) and [anchor] the row the indicator is drawn against.
+class ReorderDrop {
+  const ReorderDrop(this.target, this.anchor);
+  final Path target;
+  final Node anchor;
+}
+
+/// Rows a block can be dropped next to, in reading order: every block that
+/// shows, except what sits inside a table or a columns block.
+List<Node> _dropRows(EditorState editorState) {
+  final rows = <Node>[];
+  void walk(Node n) {
+    rows.add(n);
+    if (n.type == TableBlockKeys.type || n.type == ColumnsBlockKeys.type) {
+      return;
+    }
+    n.children.forEach(walk);
+  }
+
+  editorState.document.root.children.forEach(walk);
+  return rows;
+}
+
+RenderBox? _box(Node n) {
+  final box = n.key.currentContext?.findRenderObject();
+  return box is RenderBox && box.attached && box.hasSize ? box : null;
+}
+
+/// Resolves the pointer to a drop slot for [dragged], or null when there is
+/// none (inside its own subtree, a block that cannot nest, no room to nest).
+///
+/// * Over a row's top half the slot is before it; over the bottom half, after
+///   it (as its first child when it has children).
+/// * Below the last row it is the end of the note.
+/// * After a row that closes its group, the pointer's x picks the level: the
+///   deepest one whose left edge is at or left of the pointer, up to the top.
+ReorderDrop? resolveReorderDrop(
+  EditorState editorState,
+  Node dragged,
+  Offset global,
+) {
+  final rows = _dropRows(editorState);
+  if (rows.isEmpty) return null;
+  Node? hit;
+  RenderBox? hitBox;
+  for (final r in rows) {
+    final box = _box(r);
+    if (box == null) continue;
+    final top = box.localToGlobal(Offset.zero).dy;
+    if (global.dy >= top && global.dy <= top + box.size.height) {
+      hit = r;
+      hitBox = box;
+    }
+  }
+  final Node anchor;
+  final bool after;
+  if (hit != null && hitBox != null) {
+    anchor = hit;
+    final top = hitBox.localToGlobal(Offset.zero).dy;
+    final childBox = hit.children.isEmpty ? null : _box(hit.children.first);
+    final ownBottom =
+        childBox?.localToGlobal(Offset.zero).dy ?? top + hitBox.size.height;
+    after = global.dy > (top + ownBottom) / 2;
+  } else {
+    final first = rows.first;
+    final lastBox = _box(rows.last);
+    final firstBox = _box(first);
+    if (lastBox != null &&
+        global.dy > lastBox.localToGlobal(Offset(0, lastBox.size.height)).dy) {
+      anchor = rows.last;
+      after = true;
+    } else if (firstBox != null &&
+        global.dy < firstBox.localToGlobal(Offset.zero).dy) {
+      anchor = first;
+      after = false;
+    } else {
+      return null;
+    }
+  }
+
+  final candidates = <Path>[];
+  if (!after) {
+    candidates.add(anchor.path);
+  } else if (anchor.children.isNotEmpty) {
+    candidates.add([...anchor.path, 0]);
+  } else {
+    // After a leaf: its own level, then each ancestor it is the last child of.
+    Node x = anchor;
+    while (true) {
+      candidates.add(x.path.next);
+      final p = x.parent;
+      if (p == null ||
+          p.parent == null ||
+          x.path.last != p.children.length - 1) {
+        break;
+      }
+      x = p;
+    }
+  }
+
+  Path target = candidates.first;
+  if (after && anchor.children.isEmpty) {
+    // Deepest level whose left edge is at or left of the pointer.
+    Node x = anchor;
+    target = candidates.last;
+    for (var i = 0; i < candidates.length; i++) {
+      final left = _box(x)?.localToGlobal(Offset.zero).dx ?? 0;
+      if (left <= global.dx) {
+        target = candidates[i];
+        break;
+      }
+      x = x.parent ?? x;
+    }
+  }
+
+  if (_isInside(dragged.path, target)) return null;
+  final parentPath = target.parent;
+  final sameParent = parentPath.equals(dragged.path.parent);
+  if (!sameParent) {
+    if (!movableBlockTypes.contains(dragged.type)) return null;
+    if (target.length > 1) {
+      final parent = editorState.getNodeAtPath(parentPath);
+      if (parent == null || !indentableBlockTypes.contains(parent.type)) {
+        return null;
+      }
+      if (!indentWouldFit(editorState, parent, dragged)) return null;
+    }
+  }
+  return ReorderDrop(target, anchor);
+}
+
+bool _isInside(Path ancestor, Path p) {
+  if (p.length < ancestor.length) return false;
+  for (var i = 0; i < ancestor.length; i++) {
+    if (p[i] != ancestor[i]) return false;
+  }
+  return true;
 }

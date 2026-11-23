@@ -117,14 +117,110 @@ Node? tryIndentBlockNode(EditorState editorState, Node node) {
 /// See [tryIndentBlockNode]. Moves [node] out of its parent, to just after it.
 Node? tryOutdentBlockNode(EditorState editorState, Node node) {
   if (!canOutdentBlockNode(node)) return null;
-  final parent = node.parent!;
+  return outdentBlocks(editorState, [node]);
+}
+
+/// The one outdent every path uses (swipe, Shift+Tab, Ctrl/Cmd+[, toolbar).
+///
+/// [nodes] are consecutive children of one parent. They (with their own
+/// subtrees) move to just after that parent, keeping their ids. The siblings
+/// that sat BELOW them must not be left behind above them, or the reading order
+/// flips: when the last moved block can hold children they become its trailing
+/// children (levels kept, as in Notion); otherwise they move out with it.
+/// Returns the first moved block at its new place, or null when nothing moved.
+Node? outdentBlocks(EditorState editorState, List<Node> nodes) {
+  if (nodes.isEmpty) return null;
+  final parent = nodes.first.parent;
+  if (parent == null || !canOutdentBlockNode(nodes.first)) return null;
+  if (nodes
+      .any((n) => n.parent != parent || !movableBlockTypes.contains(n.type))) {
+    return null;
+  }
+  final last = nodes.last;
+  final trailing = parent.children.skip(last.path.last + 1).toList();
+  final adopt = indentableBlockTypes.contains(last.type);
   final target = parent.path.sublist(0, parent.path.length - 1)
     ..add(parent.path.last + 1);
+  final lastTarget = [
+    ...target.sublist(0, target.length - 1),
+    target.last + nodes.length - 1
+  ];
+  final firstAdopted = last.children.length;
+  final before = editorState.selection;
+
+  // One insert: a second insert below the first would have its path shifted by
+  // the transaction. The adopted rows go into the last moved block's copy.
+  final moved = [for (final n in nodes) n.copyWith(keepIds: true)];
+  final tail = [for (final n in trailing) n.copyWith(keepIds: true)];
+  if (adopt) {
+    tail.forEach(moved.last.insert);
+  } else {
+    moved.addAll(tail);
+  }
+  final transaction = editorState.transaction
+    ..deleteNodes([...nodes, ...trailing].reversed)
+    ..insertNodes(target, moved, deepCopy: false);
+
+  Position remap(Position p) {
+    final path = p.path;
+    for (var i = 0; i < nodes.length; i++) {
+      final from = nodes[i].path;
+      if (_isPrefix(from, path)) {
+        return Position(
+          path: [
+            ...target.sublist(0, target.length - 1),
+            target.last + i,
+            ...path.sublist(from.length)
+          ],
+          offset: p.offset,
+        );
+      }
+    }
+    for (var j = 0; j < trailing.length; j++) {
+      final from = trailing[j].path;
+      if (_isPrefix(from, path)) {
+        final rest = path.sublist(from.length);
+        final base = adopt
+            ? [...lastTarget, firstAdopted + j]
+            : [
+                ...target.sublist(0, target.length - 1),
+                target.last + nodes.length + j
+              ];
+        return Position(path: [...base, ...rest], offset: p.offset);
+      }
+    }
+    return p;
+  }
+
+  transaction.afterSelection = before == null
+      ? null
+      : Selection(start: remap(before.start), end: remap(before.end));
+  editorState.apply(transaction, withUpdateSelection: false);
+  final after = transaction.afterSelection;
+  if (after != null && after != before) editorState.selection = after;
+  return editorState.getNodeAtPath(target);
+}
+
+/// Moves [node] (with its subtree, keeping ids) to the slot [target], a path in
+/// the document BEFORE the move, at any depth. Returns the block at its new
+/// place, or null when the slot is inside the block itself or changes nothing.
+/// The one move every drag, "move down out of a group" and reorder path uses.
+Node? moveBlockTo(EditorState editorState, Node node, Path target) {
+  final from = node.path;
+  if (_isPrefix(from, target)) return null;
+  final to = [...target];
+  final n = from.length;
+  if (to.length >= n &&
+      _isPrefix(from.sublist(0, n - 1), to) &&
+      to[n - 1] > from[n - 1]) {
+    to[n - 1]--;
+  }
+  if (to.equals(from)) return null;
   final transaction = editorState.transaction
     ..deleteNode(node)
-    ..insertNodes(target, [node], deepCopy: true, keepIds: true);
-  _applyMove(editorState, transaction, node.path, target);
-  return editorState.getNodeAtPath(target);
+    ..insertNodes(to, [node], deepCopy: true, keepIds: true);
+  _applyMove(editorState, transaction, from, to);
+  return editorState.getNodeAtPath(to);
 }
 
 /// Applies a delete-at-[from] + insert-at-[to] move and keeps the caret on the

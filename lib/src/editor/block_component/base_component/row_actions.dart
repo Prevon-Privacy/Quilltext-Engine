@@ -30,7 +30,13 @@ class RowGroup {
   int get last => nodes.last.path.last;
 
   bool get canMoveUp => first > 0;
-  bool get canMoveDown => last < parent.children.length - 1;
+  bool get canMoveDown => last < parent.children.length - 1 || _canLeaveDown;
+
+  /// The last rows of a nested group move down OUT of it, to just after the
+  /// parent, so a nested row can reach the end of the note.
+  bool get _canLeaveDown =>
+      parent.parent != null &&
+      nodes.every((n) => movableBlockTypes.contains(n.type));
 }
 
 /// The [RowGroup] at the current selection, or null (see [RowGroup]).
@@ -90,6 +96,9 @@ bool canMoveRows(EditorState editorState, {required bool up}) {
 bool moveRows(EditorState editorState, {required bool up}) {
   final g = selectedRowGroup(editorState);
   if (g == null || !(up ? g.canMoveUp : g.canMoveDown)) return false;
+  if (!up && g.last == g.parent.children.length - 1) {
+    return outdentBlocksInPlace(editorState, g);
+  }
   final selection = editorState.selection!;
   final anchors = _anchors(selection, g.nodes);
   final neighbor = g.parent.children[up ? g.first - 1 : g.last + 1];
@@ -98,6 +107,15 @@ bool moveRows(EditorState editorState, {required bool up}) {
   final slot = up ? g.last + 1 : g.first;
   if (!moveNodeAmongSiblings(editorState, neighbor, slot)) return false;
   _restoreSelection(editorState, selection, anchors, g.nodes);
+  _sealHistory(editorState);
+  return true;
+}
+
+/// Moves the last rows of a nested group down out of it, to just after the
+/// parent. The rows keep their subtrees and ids; nothing below them exists to
+/// adopt, so this is [outdentBlocks] with no trailing siblings.
+bool outdentBlocksInPlace(EditorState editorState, RowGroup g) {
+  if (outdentBlocks(editorState, g.nodes) == null) return false;
   _sealHistory(editorState);
   return true;
 }

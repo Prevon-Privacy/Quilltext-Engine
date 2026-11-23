@@ -101,7 +101,7 @@ CommandShortcutEventHandler _indentCommandHandler = (editorState) {
 
   final transaction = editorState.transaction
     ..deleteNodes(nodes)
-    ..insertNodes(startPath, nodes, deepCopy: true)
+    ..insertNodes(startPath, nodes, deepCopy: true, keepIds: true)
     ..afterSelection = afterSelection;
   editorState.apply(transaction);
 

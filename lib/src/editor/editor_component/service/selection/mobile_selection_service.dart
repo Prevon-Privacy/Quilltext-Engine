@@ -1263,6 +1263,11 @@ class _MobileSelectionServiceWidgetState
   }) {
     Node? node = getNodeInOffset(offset);
 
+    // A pointer in the empty space around the rows (below the last one) still
+    // has a drop slot when the caller resolves it itself.
+    if (node == null && interceptor != null) {
+      node = editorState.document.root.children.lastOrNull;
+    }
     if (node == null) {
       return null;
     }

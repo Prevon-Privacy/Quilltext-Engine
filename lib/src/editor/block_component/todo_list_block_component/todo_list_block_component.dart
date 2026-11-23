@@ -578,8 +578,7 @@ class _TodoListBlockComponentWidgetState
 
   // ── PREVON PATCH 9: drag-to-reorder state ───────────────────────────────
   final ValueNotifier<bool> _rowHovered = ValueNotifier<bool>(false);
-  bool _todoDragActive = false;
-  Offset? _lastDragGlobal;
+  BlockReorderSession? _dragSession;
 
   /// Desktop-pointer drag-to-reorder: a hover-revealed handle, dragged with
   /// an immediate mouse-down. On web / touch the row renders exactly as
@@ -662,10 +661,7 @@ class _TodoListBlockComponentWidgetState
     _runViewSub?.cancel();
     _groupSession?.dispose();
     _rowHovered.dispose();
-    if (_todoDragActive) {
-      editorState.selectionService.removeDropTarget();
-      editorState.scrollService?.stopAutoScroll();
-    }
+    _dragSession?.dispose();
     super.dispose();
   }
 
@@ -997,69 +993,18 @@ class _TodoListBlockComponentWidgetState
     );
   }
 
-  Path? _lastTickPath;
-
   void _startTodoDrag() {
-    _todoDragActive = true;
-    reorderDraggingNode.value = node;
+    _dragSession = BlockReorderSession(editorState, node)..start();
   }
 
   void _onTodoDragUpdate(DragUpdateDetails details) {
-    _lastDragGlobal = details.globalPosition;
-    editorState.selectionService.renderDropTargetForOffset(
-      details.globalPosition,
-      interceptor: _clampDropToParent,
-    );
-    editorState.scrollService?.startAutoScroll(details.globalPosition);
-    final slot = editorState.selectionService
-        .getDropTargetRenderData(
-          details.globalPosition,
-          interceptor: _clampDropToParent,
-        )
-        ?.dropPath;
-    if (slot != null &&
-        (_lastTickPath == null || !slot.equals(_lastTickPath!))) {
-      if (_lastTickPath != null) reorderDropTick();
-      _lastTickPath = slot;
-    }
+    _dragSession?.update(details.globalPosition);
   }
 
   void _finishTodoDrag({required bool dropped}) {
-    reorderDraggingNode.value = null;
-    _lastTickPath = null;
-    editorState.selectionService.removeDropTarget();
-    editorState.scrollService?.stopAutoScroll();
-    final wasActive = _todoDragActive;
-    _todoDragActive = false;
-    final global = _lastDragGlobal;
-    _lastDragGlobal = null;
-    if (!dropped || !wasActive || global == null) return;
-
-    final data = editorState.selectionService.getDropTargetRenderData(
-      global,
-      interceptor: _clampDropToParent,
-    );
-    final dropPath = data?.dropPath;
-    if (dropPath == null) return;
-    // A checklist row can go anywhere among its siblings — above/below other
-    // checklist rows, paragraphs, bullets, headings — exactly like every other
-    // block. It never changes nesting level (same parent only).
-    if (!dropPath.parent.equals(node.path.parent)) return;
-    moveNodeAmongSiblings(editorState, node, dropPath.last);
-  }
-
-  /// Keeps the drop indicator / drop path among the dragged row's own
-  /// siblings: any hovered node outside that set resolves to the nearest
-  /// boundary sibling.
-  Node _clampDropToParent(BuildContext context, Node candidate) {
-    final parent = node.parent;
-    if (parent == null) return candidate;
-
-    Node? c = candidate;
-    while (c != null && c.parent != parent) {
-      c = c.parent;
-    }
-    return c ?? parent.children.first;
+    final session = _dragSession;
+    _dragSession = null;
+    session?.finish(dropped: dropped);
   }
 
   void checkOrUncheck() {

@@ -80,25 +80,9 @@ CommandShortcutEventHandler _outdentCommandHandler = (editorState) {
   }
 
   // keep the nodes of the immediate children of parent node
-  nodes = nodes
-      .where((node) => node.path.length == parent.path.length + 1)
-      .toList();
+  nodes = nodes.where((node) => node.parent == parent).toList();
 
-  final startPath = nodes.first.path.sublist(0, nodes.first.path.length - 1)
-    ..last += 1;
-  final endPath = nodes.last.path.sublist(0, nodes.last.path.length - 1)
-    ..last += nodes.length;
-
-  final afterSelection = Selection(
-    start: selection.start.copyWith(path: startPath),
-    end: selection.end.copyWith(path: endPath),
-  );
-
-  final transaction = editorState.transaction
-    ..deleteNodes(nodes)
-    ..insertNodes(startPath, nodes, deepCopy: true)
-    ..afterSelection = afterSelection;
-  editorState.apply(transaction);
+  outdentBlocks(editorState, nodes);
 
   return KeyEventResult.handled;
 };
