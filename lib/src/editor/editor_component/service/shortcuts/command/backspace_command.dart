@@ -125,8 +125,10 @@ CommandShortcutEventHandler _backspaceInCollapsedSelection = (editorState) {
         transaction
           ..mergeText(prev, node)
           ..insertNodes(
-            // insert children to previous node
-            prev.path.next,
+            // The children keep their place in reading order: into the slot the
+            // row leaves when [prev] is its parent, else at the end of [prev]
+            // (a row that cannot hold children gets them as following siblings).
+            _childrenSlot(prev, node),
             node.children.toList(),
             keepIds: true,
           )
@@ -224,3 +226,10 @@ CommandShortcutEventHandler _backspaceInSelectAll = (editorState) {
 
   return KeyEventResult.handled;
 };
+
+/// Where the children of [node] go when [node]'s text is merged into [prev].
+Path _childrenSlot(Node prev, Node node) {
+  if (!indentableBlockTypes.contains(prev.type)) return prev.path.next;
+  if (identical(node.parent, prev)) return node.path;
+  return [...prev.path, prev.children.length];
+}

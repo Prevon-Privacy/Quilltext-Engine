@@ -60,7 +60,11 @@ CommandShortcutEventHandler _deleteInCollapsedSelection = (editorState) {
     // in-table paragraphs should only be deleted inside the table
     if (next != null && tableParent == nextTableParent) {
       if (next.children.isNotEmpty) {
-        final path = node.path + [node.children.length];
+        // Inside [node]'s own subtree the children take the slot [next] leaves
+        // (so reading order holds); otherwise they end up under [node].
+        final inside = next.path.length > node.path.length &&
+            next.path.sublist(0, node.path.length).equals(node.path);
+        final path = inside ? next.path : node.path + [node.children.length];
         transaction.insertNodes(path, next.children, keepIds: true);
       }
       transaction

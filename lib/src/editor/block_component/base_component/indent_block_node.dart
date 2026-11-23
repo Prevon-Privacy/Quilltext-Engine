@@ -105,13 +105,55 @@ bool canOutdentBlockNode(Node node) {
 /// a multi-step gesture can keep going), or null when nothing changed.
 Node? tryIndentBlockNode(EditorState editorState, Node node) {
   if (!canIndentBlockNode(editorState, node)) return null;
-  final previous = node.previous!;
-  final target = [...previous.path, previous.children.length];
+  return indentBlocks(editorState, [node]);
+}
+
+/// The one indent every path uses (swipe, Tab, Ctrl/Cmd+], toolbar).
+///
+/// [nodes] are consecutive children of one parent whose previous sibling is a
+/// container; they (with their subtrees, keeping ids) become its last children.
+/// The selection follows the text, also when it sat inside a nested row.
+/// Returns the first moved block at its new place, or null when nothing moved.
+Node? indentBlocks(EditorState editorState, List<Node> nodes) {
+  if (nodes.isEmpty) return null;
+  final first = nodes.first;
+  final previous = first.previous;
+  if (previous == null ||
+      !indentableBlockTypes.contains(previous.type) ||
+      nodes.any((n) =>
+          n.parent != first.parent || !movableBlockTypes.contains(n.type))) {
+    return null;
+  }
+  final base = [...previous.path, previous.children.length];
+  final before = editorState.selection;
   final transaction = editorState.transaction
-    ..deleteNode(node)
-    ..insertNodes(target, [node], deepCopy: true, keepIds: true);
-  _applyMove(editorState, transaction, node.path, target);
-  return editorState.getNodeAtPath(target);
+    ..deleteNodes(nodes.reversed)
+    ..insertNodes(base, nodes, deepCopy: true, keepIds: true);
+
+  Position remap(Position p) {
+    for (var i = 0; i < nodes.length; i++) {
+      final from = nodes[i].path;
+      if (_isPrefix(from, p.path)) {
+        return Position(
+          path: [
+            ...previous.path,
+            previous.children.length + i,
+            ...p.path.sublist(from.length),
+          ],
+          offset: p.offset,
+        );
+      }
+    }
+    return p;
+  }
+
+  transaction.afterSelection = before == null
+      ? null
+      : Selection(start: remap(before.start), end: remap(before.end));
+  editorState.apply(transaction, withUpdateSelection: false);
+  final after = transaction.afterSelection;
+  if (after != null && after != before) editorState.selection = after;
+  return editorState.getNodeAtPath(base);
 }
 
 /// See [tryIndentBlockNode]. Moves [node] out of its parent, to just after it.

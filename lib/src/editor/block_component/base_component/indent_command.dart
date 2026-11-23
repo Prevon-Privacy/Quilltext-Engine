@@ -87,23 +87,10 @@ CommandShortcutEventHandler _indentCommandHandler = (editorState) {
     return KeyEventResult.ignored;
   }
 
-  // keep the nodes in the same level as the previous block
-  nodes =
-      nodes.where((node) => node.path.length == previous.path.length).toList();
+  // keep the nodes that share the first one's parent
+  nodes = nodes.where((node) => node.parent == nodes.first.parent).toList();
 
-  final startPath = previous.path + [previous.children.length];
-  final endPath = previous.path + [previous.children.length + nodes.length - 1];
-
-  final afterSelection = Selection(
-    start: selection.start.copyWith(path: startPath),
-    end: selection.end.copyWith(path: endPath),
-  );
-
-  final transaction = editorState.transaction
-    ..deleteNodes(nodes)
-    ..insertNodes(startPath, nodes, deepCopy: true, keepIds: true)
-    ..afterSelection = afterSelection;
-  editorState.apply(transaction);
+  indentBlocks(editorState, nodes);
 
   return KeyEventResult.handled;
 };
