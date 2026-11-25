@@ -6,7 +6,8 @@
 // the card simply shows name, type and size.
 
 import 'package:flutter/foundation.dart';
-import 'package:prevon_quilltext_engine/src/editor/file_actions.dart' show FileViewRequest;
+import 'package:prevon_quilltext_engine/src/editor/file_actions.dart'
+    show FileViewRequest;
 
 /// Where a file is in its life, as the card should draw it.
 enum FileCardPhase {
@@ -80,7 +81,18 @@ class FileCardWords {
 }
 
 /// The file's type family, used for the icon colour and the type label.
-enum FileFamily { pdf, image, audio, video, slides, sheet, doc, archive, text, other }
+enum FileFamily {
+  pdf,
+  image,
+  audio,
+  video,
+  slides,
+  sheet,
+  doc,
+  archive,
+  text,
+  other
+}
 
 FileFamily fileFamilyOf(String mime, String name) {
   final m = mime.toLowerCase();
@@ -138,6 +150,7 @@ String middleEllipsis(String name, int maxChars) {
   final endKeep = hasExt ? 4 : (maxChars ~/ 3);
   final startKeep = maxChars - 1 - tail.length - endKeep;
   if (startKeep < 3) return '${name.substring(0, maxChars - 1)}…';
-  final end = stem.length > endKeep ? stem.substring(stem.length - endKeep) : '';
+  final end =
+      stem.length > endKeep ? stem.substring(stem.length - endKeep) : '';
   return '${stem.substring(0, startKeep)}…$end$tail';
 }

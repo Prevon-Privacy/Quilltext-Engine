@@ -228,8 +228,7 @@ class FileBlockComponentWidgetState extends State<FileBlockComponentWidget>
       case FileMenuChoice.toggleAiHidden:
         _toggleAiHidden();
       case FileMenuChoice.moveToFiles:
-        await _applyLinkChange(
-            (host, file) => host.moveToFiles(context, file));
+        await _applyLinkChange((host, file) => host.moveToFiles(context, file));
       case FileMenuChoice.makeCopy:
         await _applyLinkChange(
             (host, file) => host.makeIndependentCopy(context, file));

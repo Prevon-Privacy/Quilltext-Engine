@@ -134,4 +134,3 @@ class FileCard extends StatelessWidget {
     );
   }
 }
-
