@@ -153,7 +153,8 @@ ReorderDrop? resolveReorderDrop(
   if (hit != null && hitBox != null) {
     anchor = hit;
     final top = hitBox.localToGlobal(Offset.zero).dy;
-    final childBox = hit.children.isEmpty ? null : _box(hit.children.first);
+    final childBox =
+        _childrenShown(hit) ? _box(hit.children.first) : null;
     final ownBottom =
         childBox?.localToGlobal(Offset.zero).dy ?? top + hitBox.size.height;
     after = global.dy > (top + ownBottom) / 2;
@@ -177,7 +178,7 @@ ReorderDrop? resolveReorderDrop(
   final candidates = <Path>[];
   if (!after) {
     candidates.add(anchor.path);
-  } else if (anchor.children.isNotEmpty) {
+  } else if (_childrenShown(anchor)) {
     candidates.add([...anchor.path, 0]);
   } else {
     // After a leaf: its own level, then each ancestor it is the last child of.
@@ -195,7 +196,7 @@ ReorderDrop? resolveReorderDrop(
   }
 
   Path target = candidates.first;
-  if (after && anchor.children.isEmpty) {
+  if (after && !_childrenShown(anchor)) {
     // Deepest level whose left edge is at or left of the pointer.
     Node x = anchor;
     target = candidates.last;
@@ -209,21 +210,40 @@ ReorderDrop? resolveReorderDrop(
     }
   }
 
-  if (_isInside(dragged.path, target)) return null;
-  final parentPath = target.parent;
-  final sameParent = parentPath.equals(dragged.path.parent);
-  if (!sameParent) {
-    if (!movableBlockTypes.contains(dragged.type)) return null;
-    if (target.length > 1) {
-      final parent = editorState.getNodeAtPath(parentPath);
-      if (parent == null || !indentableBlockTypes.contains(parent.type)) {
-        return null;
-      }
-      if (!indentWouldFit(editorState, parent, dragged)) return null;
-    }
+  // The pointer's level first, then the other levels, nearest first: a level
+  // that cannot take the block (no room, not a container) must not leave a dead
+  // zone under the finger.
+  final ordered = [target, ...candidates.where((c) => !c.equals(target))];
+  for (final t in ordered) {
+    if (_dropAllowed(editorState, dragged, t)) return ReorderDrop(t, anchor);
   }
-  return ReorderDrop(target, anchor);
+  return null;
 }
+
+/// Whether [dragged] may land at slot [target] (a path before the move).
+bool _dropAllowed(EditorState editorState, Node dragged, Path target) {
+  if (_isInside(dragged.path, target)) return false;
+  final parentPath = target.parent;
+  if (parentPath.equals(dragged.path.parent)) return true;
+  if (!movableBlockTypes.contains(dragged.type)) return false;
+  if (target.length > 1) {
+    final parent = editorState.getNodeAtPath(parentPath);
+    if (parent == null ||
+        !indentableBlockTypes.contains(parent.type) ||
+        blockHidesChildren(parent)) {
+      return false;
+    }
+    if (!indentWouldFit(editorState, parent, dragged)) return false;
+  }
+  return true;
+}
+
+/// Whether [n] draws its children nested under itself: only list-like blocks
+/// do (a table or columns block owns cells, a folded block hides its rows).
+bool _childrenShown(Node n) =>
+    n.children.isNotEmpty &&
+    indentableBlockTypes.contains(n.type) &&
+    !blockHidesChildren(n);
 
 bool _isInside(Path ancestor, Path p) {
   if (p.length < ancestor.length) return false;

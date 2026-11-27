@@ -49,7 +49,12 @@ CommandShortcutEventHandler _deleteInCollapsedSelection = (editorState) {
   if (position.offset == delta.length) {
     Node? tableParent = _mergeScopeOf(node);
     Node? nextTableParent;
-    final next = node.findDownward((element) {
+    // A folded block's rows are hidden: Delete at the end of its title must
+    // not pull one in.
+    final foldedBelow = blockHidesChildren(node) && node.children.isNotEmpty;
+    final next = foldedBelow
+        ? null
+        : node.findDownward((element) {
       nextTableParent = _mergeScopeOf(element);
       // break if only one is in a table or they're in different tables
       return tableParent != nextTableParent ||
@@ -64,7 +69,13 @@ CommandShortcutEventHandler _deleteInCollapsedSelection = (editorState) {
         // (so reading order holds); otherwise they end up under [node].
         final inside = next.path.length > node.path.length &&
             next.path.sublist(0, node.path.length).equals(node.path);
-        final path = inside ? next.path : node.path + [node.children.length];
+        // A row that cannot hold children (heading, quote) leaves them in the
+        // slot [next] vacates, as following siblings: nested under it they
+        // would not be drawn.
+        final holds = indentableBlockTypes.contains(node.type);
+        final path = inside || !holds
+            ? next.path
+            : node.path + [node.children.length];
         transaction.insertNodes(path, next.children, keepIds: true);
       }
       transaction

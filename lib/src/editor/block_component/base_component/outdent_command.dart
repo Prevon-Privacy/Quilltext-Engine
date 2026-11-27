@@ -23,66 +23,36 @@ final CommandShortcutEvent outdentBracketCommand = CommandShortcutEvent(
   handler: _outdentCommandHandler,
 );
 
-bool isOutdentable(EditorState editorState) {
-  final selection = editorState.selection;
-  if (selection == null) {
-    return false;
-  }
-
-  List<Node> nodes = editorState.getNodesInSelection(selection).normalized;
-  if (nodes.isEmpty) {
-    return false;
-  }
-
-  final parent = nodes.firstOrNull?.parent;
-  if (parent == null || !indentableBlockTypes.contains(parent.type)) {
-    return false;
-  }
-
-  if (nodes.any((node) => node.path.length == 1)) {
-    //  if the any nodes is having a path which is of size 1.
-    //  for example [0], then that means, it is not indented
-    //  thus we ignore this event.
-    return false;
-  }
-
-  // keep only immediate children nodes of parent
-  // since we are keeping only immediate children nodes, all nodes will be on same level
-  nodes = nodes
-      .where((node) => node.path.length == parent.path.length + 1)
+/// The rows Shift+Tab moves: the selected rows that sit inside a container,
+/// taken from the first nested one (a range that starts or ends on a top-level
+/// row outdents its nested part instead of doing nothing), limited to the
+/// children of that one parent. Empty when nothing can move.
+List<Node> outdentableNodes(EditorState editorState) {
+  final selection = editorState.selection?.normalized;
+  if (selection == null) return const [];
+  final nested = editorState
+      .getNodesInSelection(selection)
+      .normalized
+      .where((node) => node.path.length > 1)
       .toList();
-
-  final isAllIndentable =
-      nodes.every((node) => movableBlockTypes.contains(node.type));
-  if (!isAllIndentable) {
-    return false;
+  if (nested.isEmpty) return const [];
+  final parent = nested.first.parent;
+  if (parent == null || !indentableBlockTypes.contains(parent.type)) {
+    return const [];
   }
-
-  return true;
+  final run = nested.where((node) => node.parent == parent).toList();
+  return run.every((node) => movableBlockTypes.contains(node.type))
+      ? run
+      : const [];
 }
 
+bool isOutdentable(EditorState editorState) =>
+    outdentableNodes(editorState).isNotEmpty;
+
 CommandShortcutEventHandler _outdentCommandHandler = (editorState) {
-  final selection = editorState.selection?.normalized;
-  if (selection == null) {
-    return KeyEventResult.ignored;
-  }
-
-  if (!isOutdentable(editorState)) {
-    // ignore the system default tab behavior
-    return KeyEventResult.handled;
-  }
-
-  List<Node> nodes = editorState.getNodesInSelection(selection).normalized;
-  final parent = nodes.firstOrNull?.parent;
-
-  if (parent == null) {
-    return KeyEventResult.ignored;
-  }
-
-  // keep the nodes of the immediate children of parent node
-  nodes = nodes.where((node) => node.parent == parent).toList();
-
-  outdentBlocks(editorState, nodes);
-
+  if (editorState.selection == null) return KeyEventResult.ignored;
+  // ignore the system default tab behavior even when nothing can move
+  final nodes = outdentableNodes(editorState);
+  if (nodes.isNotEmpty) outdentBlocks(editorState, nodes);
   return KeyEventResult.handled;
 };

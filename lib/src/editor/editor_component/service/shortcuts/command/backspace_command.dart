@@ -111,13 +111,19 @@ CommandShortcutEventHandler _backspaceInCollapsedSelection = (editorState) {
 
       Node? tableParent = _mergeScopeOf(node);
       Node? prevTableParent;
-      final prev = node.previousNodeWhere((element) {
+      final hiddenPrev = node.previousNodeWhere((element) {
         prevTableParent = _mergeScopeOf(element);
         // break if only one is in a table/column or they're in different ones
         return tableParent != prevTableParent ||
             // merge with the previous node contains delta.
             element.delta != null;
       });
+      // A folded block hides its rows: merge into its visible title, never into
+      // a row the person cannot see.
+      Node? prev = hiddenPrev;
+      for (var a = hiddenPrev?.parent; a != null; a = a.parent) {
+        if (a.delta != null && blockHidesChildren(a)) prev = a;
+      }
       // table nodes should be deleted using the table menu
       // in-table paragraphs should only be deleted inside the table
       if (prev != null && tableParent == prevTableParent) {
@@ -229,7 +235,9 @@ CommandShortcutEventHandler _backspaceInSelectAll = (editorState) {
 
 /// Where the children of [node] go when [node]'s text is merged into [prev].
 Path _childrenSlot(Node prev, Node node) {
-  if (!indentableBlockTypes.contains(prev.type)) return prev.path.next;
+  if (!indentableBlockTypes.contains(prev.type) || blockHidesChildren(prev)) {
+    return prev.path.next;
+  }
   if (identical(node.parent, prev)) return node.path;
   return [...prev.path, prev.children.length];
 }

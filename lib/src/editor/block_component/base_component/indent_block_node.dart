@@ -40,6 +40,13 @@ const Set<String> gutterReorderBlockTypes = {
   FileBlockKeys.type,
 };
 
+/// Whether [node] has its children folded away (hover chevron or a closed
+/// collapsible): they stay in the document but are not drawn. Anything moved
+/// INTO a folded block would vanish with the caret inside it, so indent opens
+/// it, outdent does not adopt into it and a drop never lands inside it.
+bool blockHidesChildren(Node node) =>
+    node.attributes[blockComponentCollapsed] == true;
+
 /// Narrowest a row may get from indentation: marker + grip (~66dp) plus room
 /// for roughly a dozen characters of body text.
 const double kMinIndentedRowWidth = 170;
@@ -126,7 +133,11 @@ Node? indentBlocks(EditorState editorState, List<Node> nodes) {
   }
   final base = [...previous.path, previous.children.length];
   final before = editorState.selection;
-  final transaction = editorState.transaction
+  final transaction = editorState.transaction;
+  if (blockHidesChildren(previous)) {
+    transaction.updateNode(previous, {blockComponentCollapsed: false});
+  }
+  transaction
     ..deleteNodes(nodes.reversed)
     ..insertNodes(base, nodes, deepCopy: true, keepIds: true);
 
@@ -144,7 +155,11 @@ Node? indentBlocks(EditorState editorState, List<Node> nodes) {
         );
       }
     }
-    return p;
+    return Position(
+      path: _shiftPath(
+          p.path, [for (final n in nodes) n.path], base, nodes.length),
+      offset: p.offset,
+    );
   }
 
   transaction.afterSelection = before == null
@@ -180,7 +195,8 @@ Node? outdentBlocks(EditorState editorState, List<Node> nodes) {
   }
   final last = nodes.last;
   final trailing = parent.children.skip(last.path.last + 1).toList();
-  final adopt = indentableBlockTypes.contains(last.type);
+  final adopt =
+      indentableBlockTypes.contains(last.type) && !blockHidesChildren(last);
   final target = parent.path.sublist(0, parent.path.length - 1)
     ..add(parent.path.last + 1);
   final lastTarget = [
@@ -231,7 +247,15 @@ Node? outdentBlocks(EditorState editorState, List<Node> nodes) {
         return Position(path: [...base, ...rest], offset: p.offset);
       }
     }
-    return p;
+    return Position(
+      path: _shiftPath(
+        path,
+        [for (final n in [...nodes, ...trailing]) n.path],
+        target,
+        moved.length,
+      ),
+      offset: p.offset,
+    );
   }
 
   transaction.afterSelection = before == null
@@ -260,8 +284,20 @@ Node? moveBlockTo(EditorState editorState, Node node, Path target) {
   if (to.equals(from)) return null;
   final transaction = editorState.transaction
     ..deleteNode(node)
-    ..insertNodes(to, [node], deepCopy: true, keepIds: true);
+    // The transaction re-bases this insert against the delete above, so it
+    // takes the slot in the document BEFORE the move ([target]); [to] is the
+    // same slot after the removal, for the caret and the returned node.
+    ..insertNodes(target, [node], deepCopy: true, keepIds: true);
   _applyMove(editorState, transaction, from, to);
+  // A divider / image / table moved next to another non-text block needs its
+  // guard paragraph recorded NOW, or undo shifts by one row (see
+  // addNonTextGuardsNow); both the old and the new parent can need one.
+  final fromParent = editorState.getNodeAtPath(from.parent);
+  final toParent = editorState.getNodeAtPath(to.parent);
+  if (toParent != null) addNonTextGuardsNow(editorState, toParent);
+  if (fromParent != null && fromParent != toParent) {
+    addNonTextGuardsNow(editorState, fromParent);
+  }
   return editorState.getNodeAtPath(to);
 }
 
@@ -269,6 +305,14 @@ Node? moveBlockTo(EditorState editorState, Node node, Path target) {
 /// same text: a path inside the moved block follows it, a path in a later
 /// sibling shifts with the list. The selection is only written when it
 /// actually changed, so a caret that did not move never re-opens the keyboard.
+void applyMoveKeepingCaret(
+  EditorState editorState,
+  Transaction transaction,
+  Path from,
+  Path to,
+) =>
+    _applyMove(editorState, transaction, from, to);
+
 void _applyMove(
   EditorState editorState,
   Transaction transaction,
@@ -309,6 +353,40 @@ Position _remap(Position p, Path from, Path to) {
     path[m - 1]++;
   }
   return Position(path: path, offset: p.offset);
+}
+
+/// Where a block that is NOT itself moved ends up when [deleted] blocks (paths
+/// in the document before the edit) are removed and [insertCount] blocks are
+/// inserted at [insertAt] (a path after the removals). A caret in a later
+/// sibling, or anywhere below one, shifts with the list.
+Path _shiftPath(
+  Path path,
+  List<Path> deleted,
+  Path insertAt,
+  int insertCount,
+) {
+  final out = [...path];
+  final ordered = [...deleted]..sort((a, b) {
+      for (var i = 0; i < a.length && i < b.length; i++) {
+        if (a[i] != b[i]) return b[i].compareTo(a[i]);
+      }
+      return b.length.compareTo(a.length);
+    });
+  for (final d in ordered) {
+    final n = d.length;
+    if (out.length >= n &&
+        _isPrefix(d.sublist(0, n - 1), out) &&
+        out[n - 1] > d[n - 1]) {
+      out[n - 1]--;
+    }
+  }
+  final m = insertAt.length;
+  if (out.length >= m &&
+      _isPrefix(insertAt.sublist(0, m - 1), out) &&
+      out[m - 1] >= insertAt[m - 1]) {
+    out[m - 1] += insertCount;
+  }
+  return out;
 }
 
 bool _isPrefix(Path prefix, Path path) {

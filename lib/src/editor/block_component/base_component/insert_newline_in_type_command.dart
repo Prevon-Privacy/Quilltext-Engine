@@ -26,7 +26,9 @@ Future<bool> insertNewLineInType(
 
   if (selection.startIndex == 0 && delta.isEmpty) {
     // clear the style
-    if (node != null && node.path.length > 1) {
+    // Only a row inside a list-like parent can step out; in a column or a
+    // table cell Enter must still clear the style (it used to do nothing).
+    if (node != null && node.path.length > 1 && isOutdentable(editorState)) {
       return KeyEventResult.ignored != outdentCommand.execute(editorState);
     }
     return KeyEventResult.ignored !=

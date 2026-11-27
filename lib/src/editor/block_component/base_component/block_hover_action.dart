@@ -82,10 +82,12 @@ bool moveNodeAmongSiblings(
   final target = targetIndex.clamp(0, siblingCount);
   // Dropping onto your own slot (or the gap immediately after it) is a no-op.
   if (target == current || target == current + 1) return false;
+  final from = node.path;
   final transaction = editorState.transaction
     ..moveNode([...node.path.parent, target], node);
-  transaction.afterSelection = null;
-  editorState.apply(transaction, withUpdateSelection: false);
+  // The caret follows its text (the slot is in the pre-move list).
+  applyMoveKeepingCaret(editorState, transaction, from,
+      [...from.parent, target > current ? target - 1 : target]);
   addNonTextGuardsNow(editorState, parent);
   return true;
 }
