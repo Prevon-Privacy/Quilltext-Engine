@@ -196,12 +196,21 @@ class ColumnsActions {
     }
     // Keep the caret in the same block, which now lives in the moved copy.
     final selection = editorState.selection;
-    if (selection != null &&
-        columnAtSelection(columns, editorState) == original) {
+    final caretColumn = columnAtSelection(columns, editorState);
+    if (selection != null && caretColumn != null) {
+      final idx = cols.indexOf(caretColumn);
+      // Every column between the two ends shifts by one.
+      final newIdx = idx == from
+          ? to
+          : (from < idx && idx <= to)
+              ? idx - 1
+              : (to <= idx && idx < from)
+                  ? idx + 1
+                  : idx;
       final rel = selection.start.path.sublist(columns.path.length + 1);
       transaction.afterSelection = Selection.collapsed(
         Position(
-          path: [...columns.path, to, ...rel],
+          path: [...columns.path, newIdx, ...rel],
           offset: selection.start.offset,
         ),
       );
@@ -378,6 +387,12 @@ class ColumnsActions {
     final empty = block.delta?.isEmpty ?? false;
     if (empty && column.children.length == 1) {
       removeColumn(columns, _columns(columns).indexOf(column), editorState);
+    } else if (empty && column.children.length > 1) {
+      // An empty first line with more below: remove it, caret to the next one.
+      final transaction = editorState.transaction
+        ..deleteNode(block)
+        ..afterSelection = Selection.collapsed(Position(path: block.path));
+      editorState.apply(transaction);
     }
     return true;
   }

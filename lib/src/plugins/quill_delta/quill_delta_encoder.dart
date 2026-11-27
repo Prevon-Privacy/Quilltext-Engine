@@ -16,10 +16,13 @@ const _blockquote = 'blockquote';
 const _indent = 'indent';
 
 class QuillDeltaEncoder extends Converter<Delta, Document> {
-  final Map<int, List<Node>> nestedLists = {};
+  /// The last list item seen per indent level of the current run of list items; reset per [convert] and by any
+  /// non-list block, so one document (or one paragraph) never nests under another's items.
+  final Map<int, Node> _lastAtLevel = {};
 
   @override
   Document convert(Delta input) {
+    _lastAtLevel.clear();
     final iterator = input.iterator;
     final document = Document.blank(withInitialText: false);
 
@@ -37,25 +40,31 @@ class QuillDeltaEncoder extends Converter<Delta, Document> {
             node = _applyBlockquoteIfNeeded(node, attributes);
             _applyIndentIfNeeded(node, attributes);
           }
-          if (_isIndentBulletedList(attributes)) {
-            final level = _indentLevel(attributes);
-            final path = [
-              ...nestedLists[level - 1]!.last.path,
-              nestedLists[level]!.length - 1,
-            ];
-            document.insert(path, [node]);
+          final level = _isListNode(node) ? _indentLevel(attributes) : null;
+          final parent = level == null ? null : _parentFor(level);
+          if (level != null) {
+            _lastAtLevel.removeWhere((l, _) => l >= level);
+            _lastAtLevel[level] = node;
+          } else {
+            _lastAtLevel.clear();
+          }
+          if (parent != null) {
+            document.insert([...parent.path, parent.children.length], [node]);
           } else {
             document.insert([index++], [node]);
           }
           node = paragraphNode();
         } else {
-          final texts = op.text.split('\n');
-          if (texts.length > 1) {
-            node.delta?.insert(texts[0]);
-            document.insert([index++], [node]);
-            node = paragraphNode(delta: Delta()..insert(texts[1]));
-          } else {
-            _applyStyle(node, op.text, attributes);
+          final texts = op.text.split(_newLineSymbol);
+          for (var i = 0; i < texts.length; i++) {
+            if (texts[i].isNotEmpty) {
+              _applyStyle(node, texts[i], attributes);
+            }
+            if (i < texts.length - 1) {
+              _lastAtLevel.clear();
+              document.insert([index++], [node]);
+              node = paragraphNode();
+            }
           }
         }
       } else {
@@ -63,11 +72,27 @@ class QuillDeltaEncoder extends Converter<Delta, Document> {
       }
     }
 
-    if (index == 0) {
+    // Text after the last newline is still a block of its own.
+    if (index == 0 || (node.delta?.toPlainText().isNotEmpty ?? false)) {
       document.insert([index], [node]);
     }
 
     return document;
+  }
+
+  bool _isListNode(Node node) => const {
+        BulletedListBlockKeys.type,
+        NumberedListBlockKeys.type,
+        TodoListBlockKeys.type,
+      }.contains(node.type);
+
+  /// The nearest item below [level] in the current run, or null for a top-level block.
+  Node? _parentFor(int level) {
+    for (var l = level - 1; l >= 0; l--) {
+      final candidate = _lastAtLevel[l];
+      if (candidate != null) return candidate;
+    }
+    return null;
   }
 
   void _applyStyle(Node node, String text, Map<String, dynamic>? attributes) {
@@ -148,29 +173,11 @@ class QuillDeltaEncoder extends Converter<Delta, Document> {
         final bulletedList = bulletedListNode(
           delta: node.delta,
         );
-        final indent = attributes[_indent] as int?;
-        if (indent != null) {
-          nestedLists[indent] ??= [];
-          nestedLists[indent]?.add(bulletedList);
-        } else {
-          nestedLists.clear();
-          nestedLists[0] ??= [];
-          nestedLists[0]?.add(bulletedList);
-        }
         return bulletedList;
       case _orderedList:
         final numberedList = numberedListNode(
           delta: node.delta,
         );
-        final indent = attributes[_indent] as int?;
-        if (indent != null) {
-          nestedLists[indent] ??= [];
-          nestedLists[indent]?.add(numberedList);
-        } else {
-          nestedLists.clear();
-          nestedLists[0] ??= [];
-          nestedLists[0]?.add(numberedList);
-        }
         return numberedList;
       case _checkedList:
         final checkedList = todoListNode(
@@ -190,14 +197,8 @@ class QuillDeltaEncoder extends Converter<Delta, Document> {
   }
 
   int _indentLevel(Map? attributes) {
-    final indent = attributes?['indent'] as int?;
-    return indent ?? 1;
-  }
-
-  bool _isIndentBulletedList(Map<String, dynamic>? attributes) {
-    final list = attributes?[_list] as String?;
     final indent = attributes?[_indent] as int?;
-    return [_bulletedList, _orderedList].contains(list) && indent != null;
+    return indent ?? 0;
   }
 
   bool _containsStyle(Map<String, dynamic>? attributes, String key) {

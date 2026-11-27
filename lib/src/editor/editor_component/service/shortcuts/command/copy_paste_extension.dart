@@ -38,8 +38,13 @@ extension EditorCopyPaste on EditorState {
     } else if (insertedDelta != null) {
       // if the node is not empty, insert the delta from inserted node after the selection.
       transaction.insertTextDelta(node, selection.endIndex, insertedDelta);
-      if (_listTypes.contains(node.type) && insertedNode.children.isNotEmpty) {
-        transaction.insertNodes(node.path + [0], insertedNode.children);
+      if (insertedNode.children.isNotEmpty) {
+        // The pasted row's children are kept: first children of a list row, else the rows right after the target
+        // (a heading or quote does not draw children).
+        transaction.insertNodes(
+          _listTypes.contains(node.type) ? node.path + [0] : node.path.next,
+          insertedNode.children.map((e) => e.deepCopy()).toList(),
+        );
       }
     }
     await apply(transaction);
@@ -80,10 +85,10 @@ extension EditorCopyPaste on EditorState {
         );
       }
 
-      final lastNode = nodes.last;
+      final lastNode = _deepestLast(nodes.last);
       final rest = delta.slice(selection.endIndex);
       if (lastNode.delta != null) {
-        nodes.last.insertDelta(rest, insertAfter: true);
+        lastNode.insertDelta(rest, insertAfter: true);
       } else if (rest.isNotEmpty) {
         // The paste ends in a block that holds no text (a divider, a picture): the words that
         // followed the caret go on in a paragraph of their own instead of being dropped.
@@ -121,8 +126,12 @@ extension EditorCopyPaste on EditorState {
       }
     }
 
+    // The caret goes at the end of the pasted text; the old children follow the row that now holds the text after the caret
+    // (copies: the live children are never unlinked outside the transaction).
+    final path = calculatePath(selection.start.path, nodes);
+    final holder = _deepestLast(nodes.last);
     for (final child in node.children) {
-      nodes.last.insert(child);
+      holder.insert(child.copyWith(keepIds: true));
     }
 
     transaction.insertNodes(selection.end.path, nodes);
@@ -130,7 +139,6 @@ extension EditorCopyPaste on EditorState {
     // delete the current node.
     transaction.deleteNode(node);
 
-    final path = calculatePath(selection.start.path, nodes);
     transaction.afterSelection = Selection.collapsed(
       Position(
         path: path,
@@ -179,6 +187,13 @@ extension EditorCopyPaste on EditorState {
     }
     return nodes.last.delta?.length ?? 0;
   }
+}
+
+Node _deepestLast(Node n) {
+  while (n.children.isNotEmpty) {
+    n = n.children.last;
+  }
+  return n;
 }
 
 extension on Node {

@@ -78,11 +78,16 @@ class _ColumnWidthResizerState extends State<ColumnWidthResizer> {
         onHorizontalDragStart: _onStart,
         onHorizontalDragUpdate: _onUpdate,
         onHorizontalDragEnd: (_) => _finish(),
-        onHorizontalDragCancel: _finish,
+        onHorizontalDragCancel: () => _finish(commit: false),
         onDoubleTap: _equalize,
-        child: SizedBox(
-          width: ColumnsBlockConstants.resizerHitWidth,
-          child: line,
+        // A system pointer cancel after the drag was accepted reaches the
+        // recognizer as a normal "end"; this child listener sees it first.
+        child: Listener(
+          onPointerCancel: (_) => _finish(commit: false),
+          child: SizedBox(
+            width: ColumnsBlockConstants.resizerHitWidth,
+            child: line,
+          ),
         ),
       ),
     );
@@ -118,7 +123,7 @@ class _ColumnWidthResizerState extends State<ColumnWidthResizer> {
     widget.right.updateAttributes({ColumnBlockKeys.weight: pair - left});
   }
 
-  void _finish() {
+  void _finish({bool commit = true}) {
     if (!_dragging) return;
     _dragging = false;
     if (mounted) setState(() {});
@@ -129,7 +134,7 @@ class _ColumnWidthResizerState extends State<ColumnWidthResizer> {
     // transaction, so undo returns to the starting widths.
     widget.left.updateAttributes({ColumnBlockKeys.weight: _leftOriginal});
     widget.right.updateAttributes({ColumnBlockKeys.weight: _rightOriginal});
-    if ((left - _leftStart).abs() < 0.001) return;
+    if (!commit || (left - _leftStart).abs() < 0.001) return;
     final transaction = widget.editorState.transaction
       ..updateNode(widget.left, {ColumnBlockKeys.weight: left})
       ..updateNode(widget.right, {ColumnBlockKeys.weight: right});

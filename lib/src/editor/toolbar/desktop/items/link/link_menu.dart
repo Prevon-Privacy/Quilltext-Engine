@@ -117,7 +117,7 @@ class _LinkMenuState extends State<LinkMenu> {
           ),
         ),
         validator: (value) {
-          if (value == null || value.isEmpty || !isUri(value)) {
+          if (normalizeTypedLink(value) == null) {
             return AppFlowyEditorL10n.current.incorrectLink;
           }
           return null;

@@ -53,10 +53,29 @@ _LinkHit? _linkHitAt(
   }
   final ctx = node.context;
   if (ctx == null || !ctx.mounted) return null;
-  var start = 0;
-  for (final op in delta) {
-    final end = start + op.length;
-    final attrs = op is TextInsert ? op.attributes : null;
+  // The same link can cross formatting spans (plain + bold under one href):
+  // the whole contiguous run carrying one target is ONE link.
+  final spans = <(int, int, Map<String, dynamic>?)>[];
+  {
+    var at = 0;
+    for (final op in delta) {
+      spans.add((at, at + op.length, op is TextInsert ? op.attributes : null));
+      at += op.length;
+    }
+  }
+  String? keyOf(Map<String, dynamic>? a) {
+    final k = a?[AppFlowyRichTextKeys.noteLink] ??
+        a?[AppFlowyRichTextKeys.folderLink] ??
+        a?[AppFlowyRichTextKeys.href] ??
+        a?[AppFlowyRichTextKeys.appLink];
+    if (k == null) return null;
+    return '${a?[AppFlowyRichTextKeys.noteLink]}|'
+        '${a?[AppFlowyRichTextKeys.folderLink]}|'
+        '${a?[AppFlowyRichTextKeys.href]}|${a?[AppFlowyRichTextKeys.appLink]}';
+  }
+
+  for (var i = 0; i < spans.length; i++) {
+    final (start, end, attrs) = spans[i];
     final noteId = attrs?[AppFlowyRichTextKeys.noteLink] as String?;
     final folderId = attrs?[AppFlowyRichTextKeys.folderLink] as String?;
     final href = attrs?[AppFlowyRichTextKeys.href] as String?;
@@ -79,20 +98,28 @@ _LinkHit? _linkHitAt(
         (r) => Rect.fromLTRB(r.left - 6, r.top - 4, r.right + 6, r.bottom + 4)
             .contains(local),
       )) {
+        var from = i;
+        var to = i;
+        final key = keyOf(attrs);
+        while (from > 0 && keyOf(spans[from - 1].$3) == key) {
+          from--;
+        }
+        while (to < spans.length - 1 && keyOf(spans[to + 1].$3) == key) {
+          to++;
+        }
         return _LinkHit(
           node: node,
           context: ctx,
-          start: start,
-          end: end,
+          start: spans[from].$1,
+          end: spans[to].$2,
           href: href,
           noteId: noteId,
           folderId: folderId,
           appTarget: appTarget,
-          attributes: {...?attrs},
+          attributes: {...?spans[from].$3},
         );
       }
     }
-    start = end;
   }
   return null;
 }
@@ -270,7 +297,10 @@ Future<void> _editLinkRun(
       attributes: attrs,
     );
   } else {
-    transaction.formatText(hit.node, hit.start, hit.end - hit.start, attrs);
+    // Only the address changes: leave each span's own formatting alone.
+    transaction.formatText(hit.node, hit.start, hit.end - hit.start, {
+      AppFlowyRichTextKeys.href: newUrl,
+    });
   }
   editorState.apply(transaction);
 }

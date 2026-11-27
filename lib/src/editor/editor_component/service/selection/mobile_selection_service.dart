@@ -732,6 +732,13 @@ class _MobileSelectionServiceWidgetState
     final offset = details.globalPosition;
     final first = _firstTapPosition;
     _firstTapPosition = null;
+    // A quick second tap on a picture is still a tap on it (the gesture
+    // detector counts two close taps as a double tap by wall clock): open it
+    // again instead of trying to select a "word" in an image.
+    final tapped = getPositionInOffset(offset);
+    if (tapped != null && openImageAtPosition(editorState, tapped, offset)) {
+      return;
+    }
     Selection? selection;
     if (first != null) {
       selection = editorState

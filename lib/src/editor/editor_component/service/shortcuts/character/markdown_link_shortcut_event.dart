@@ -38,10 +38,22 @@ bool handleFormatMarkdownLinkToLink({
     return false;
   }
 
-  final matches = _linkRegex.allMatches(plainText);
-  final lastMatch = matches.last;
+  // Only a link that ends exactly at the caret (with the typed ")") counts;
+  // an earlier finished link in the block is left alone.
+  RegExpMatch? lastMatch;
+  for (final m in _linkRegex.allMatches(plainText)) {
+    if (m.end == plainText.length) lastMatch = m;
+  }
+  if (lastMatch == null) return false;
   final title = lastMatch.group(1);
   final link = lastMatch.group(2);
+  // Keep the title's own formatting (bold etc.) next to the new href.
+  final titleOps = delta
+      .slice(lastMatch.start + 1, lastMatch.start + 1 + title!.length)
+      .whereType<TextInsert>();
+  final titleAttrs = <String, dynamic>{
+    ...?(titleOps.isEmpty ? null : titleOps.first.attributes),
+  };
 
   // if all the conditions are met, we should format the text to a link.
   final transaction = editorState.transaction
@@ -53,8 +65,9 @@ bool handleFormatMarkdownLinkToLink({
     ..insertText(
       node,
       lastMatch.start,
-      title!,
+      title,
       attributes: {
+        ...titleAttrs,
         AppFlowyRichTextKeys.href: link,
       },
     );

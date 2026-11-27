@@ -32,15 +32,14 @@ final class Node extends ChangeNotifier with LinkedListEntry<Node> {
     this.parent,
     Attributes attributes = const {},
     Iterable<Node> children = const [],
-  })  : _children = LinkedList<Node>()
-          ..addAll(
-            children.map(
-              (e) => e..unlink(),
-            ),
-          ), // unlink the given children to avoid the error of "node has already a parent"
+  })  : _children = LinkedList<Node>(),
         _attributes = attributes,
         id = id ?? newBlockId() {
-    for (final child in children) {
+    // Materialise once: a lazy iterable (Node.fromJson passes a `.map`) would otherwise be re-run per pass and
+    // build a node at depth d 2^d times. Unlink first to avoid "node has already a parent".
+    for (final child in children.toList(growable: false)) {
+      child.unlink();
+      _children.add(child);
       child.parent = this;
     }
   }
@@ -153,13 +152,15 @@ final class Node extends ChangeNotifier with LinkedListEntry<Node> {
   /// end of the [Node].
   ///
   void insert(Node entry, {int? index}) {
+    // Detach first: moving a child inside this parent must measure the length without it, and [index] is the
+    // position the entry ends up at.
+    entry._resetRelationshipIfNeeded();
     final length = _children.length;
     index ??= length;
 
     AppFlowyEditorLog.editor
         .debug('insert Node $entry at path ${path + [index]}}');
 
-    entry._resetRelationshipIfNeeded();
     entry.parent = this;
 
     _cacheChildren = null;

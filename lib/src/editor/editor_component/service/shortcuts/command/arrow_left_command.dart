@@ -92,6 +92,11 @@ CommandShortcutEventHandler _moveCursorToLeftWordCommandHandler =
       forward: false,
       selectionRange: SelectionRange.word,
     );
+    // PREVON PATCH 40: at the end of the block the word position is in the next block: just step there.
+    if (endOfWord != null && !endOfWord.path.equals(node.path)) {
+      editorState.moveCursorBackward(SelectionMoveRange.word);
+      return KeyEventResult.handled;
+    }
     final selectedWord = delta.toPlainText().substring(
           selection.end.offset,
           endOfWord?.offset,
@@ -107,6 +112,11 @@ CommandShortcutEventHandler _moveCursorToLeftWordCommandHandler =
       selectionRange: SelectionRange.word,
     );
     if (startOfWord == null) {
+      return KeyEventResult.handled;
+    }
+    // PREVON PATCH 40: at offset 0 the word position is in the previous block: just step there.
+    if (!startOfWord.path.equals(node.path)) {
+      editorState.moveCursorForward(SelectionMoveRange.word);
       return KeyEventResult.handled;
     }
     final selectedWord = delta.toPlainText().substring(

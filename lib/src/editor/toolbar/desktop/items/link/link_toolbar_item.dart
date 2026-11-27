@@ -95,9 +95,12 @@ void showLinkMenu(
           await editorLaunchUrl(linkText, context);
         },
         onSubmitted: (text) async {
-          if (isUri(text)) {
+          // Blank or not an address: keep the menu open (its field shows
+          // the "incorrect link" message) and store nothing.
+          final href = normalizeTypedLink(text);
+          if (href != null) {
             await editorState.formatDelta(selection, {
-              BuiltInAttributeKey.href: text,
+              BuiltInAttributeKey.href: href,
             });
             dismissOverlay();
           }

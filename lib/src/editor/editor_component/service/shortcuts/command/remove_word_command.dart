@@ -76,7 +76,8 @@ CommandShortcutEventHandler _deleteLeftWordCommandHandler = (editorState) {
     );
 
     //this handles the edge case where the textNode only consists single space.
-    if (newStartOfWord != null) {
+    // PREVON PATCH 40: a position in another block (caret on leading spaces, a block above) is not ours.
+    if (newStartOfWord != null && newStartOfWord.path.equals(node.path)) {
       startOfWord = newStartOfWord;
     }
   }
@@ -144,7 +145,7 @@ CommandShortcutEventHandler _deleteRightWordCommandHandler = (editorState) {
     );
 
     //this handles the edge case where the textNode only consists single space.
-    if (newEndOfWord != null) {
+    if (newEndOfWord != null && newEndOfWord.path.equals(node.path)) {
       endOfWord = newEndOfWord;
     }
   }

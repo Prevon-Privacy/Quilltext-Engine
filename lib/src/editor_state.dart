@@ -564,68 +564,65 @@ class EditorState {
     if (selection == null) {
       return res;
     }
-    final nodes = getNodesInSelection(selection);
+    final nodes = getNodesInSelection(selection).toList()
+      ..sort((a, b) => a.path.equals(b.path) ? 0 : (a.path > b.path ? 1 : -1));
+    final normalized = selection.normalized;
+    final single = selection.isSingle;
+    // One copy per selected row, WITHOUT its subtree: a child that is not itself in the selection must not travel with its
+    // parent. A copy hangs under the copy of its nearest selected ancestor, else it is a top-level row. A block without text
+    // (table, columns) is copied whole and its inside is skipped. ([withCopy] is kept for callers; the result is always
+    // detached copies, the live document is never edited here.)
+    final copies = <Node, Node>{};
+    final whole = <Node>[];
+    Node? firstSrc;
+    Node? lastSrc;
     for (final node in nodes) {
-      if (res.any((element) => element.isParentOf(node))) {
+      if (whole.any((w) => w.isParentOf(node))) {
         continue;
       }
-      res.add(node);
-    }
-
-    if (withCopy) {
-      res = res.map((e) => e.copyWith()).toList();
-    }
-
-    if (res.isNotEmpty) {
-      var delta = res.first.delta;
-      if (delta != null) {
-        res.first.updateAttributes(
-          {
-            ...res.first.attributes,
-            blockComponentDelta: delta
-                .slice(
-                  selection.startIndex,
-                  selection.isSingle ? selection.endIndex : delta.length,
-                )
-                .toJson(),
-          },
-        );
-      }
-
-      var node = res.last;
-      while (node.children.isNotEmpty) {
-        node = node.children.last;
-      }
-      delta = node.delta;
-      if (delta != null && !selection.isSingle) {
-        if (node.parent != null) {
-          node.insertBefore(
-            node.copyWith(
-              attributes: {
-                ...node.attributes,
-                blockComponentDelta: delta
-                    .slice(
-                      0,
-                      selection.endIndex,
-                    )
-                    .toJson(),
-              },
-            ),
-          );
-          node.unlink();
-        } else {
-          node.updateAttributes(
-            {
-              ...node.attributes,
-              blockComponentDelta: delta
-                  .slice(
-                    0,
-                    selection.endIndex,
-                  )
-                  .toJson(),
-            },
-          );
+      final Node copy;
+      if (node.delta == null) {
+        whole.add(node);
+        copy = node.copyWith();
+      } else {
+        copy = node.copyWith(children: const <Node>[]);
+        // Belt and braces: a copy never carries the source subtree.
+        for (final kid in copy.children.toList()) {
+          kid.unlink();
         }
+      }
+      copies[node] = copy;
+      firstSrc ??= node;
+      lastSrc = node;
+      Node? ancestor = node.parent;
+      while (ancestor != null && !copies.containsKey(ancestor)) {
+        ancestor = ancestor.parent;
+      }
+      if (ancestor != null) {
+        copies[ancestor]!.insert(copy);
+      } else {
+        res.add(copy);
+      }
+    }
+
+    if (firstSrc != null && lastSrc != null) {
+      final first = copies[firstSrc]!;
+      final last = copies[lastSrc]!;
+      final firstDelta = first.delta;
+      if (firstDelta != null) {
+        first.updateAttributes({
+          ...first.attributes,
+          blockComponentDelta: firstDelta
+              .slice(normalized.startIndex, single ? normalized.endIndex : firstDelta.length)
+              .toJson(),
+        });
+      }
+      final lastDelta = last.delta;
+      if (lastDelta != null && !single) {
+        last.updateAttributes({
+          ...last.attributes,
+          blockComponentDelta: lastDelta.slice(0, normalized.endIndex).toJson(),
+        });
       }
     }
 

@@ -90,7 +90,7 @@ CommandShortcutEventHandler _enterInTableCellHandler = (editorState) {
       transaction.afterSelection =
           Selection.single(path: cell.parent!.path.next, startOffset: 0);
       editorState.apply(transaction);
-    } else if (_nodeHasTextChild(nextNode)) {
+    } else if (nextNode.children.isNotEmpty) {
       editorState.selectionService.updateSelection(
         Selection.single(
           path: nextNode.childAtIndexOrNull(0)!.path,
@@ -98,22 +98,25 @@ CommandShortcutEventHandler _enterInTableCellHandler = (editorState) {
         ),
       );
     }
+    return KeyEventResult.handled;
   }
-  return KeyEventResult.handled;
+  // A selection over several nodes is not ours: let the normal Enter run.
+  return KeyEventResult.ignored;
 };
 
 CommandShortcutEventHandler _leftInTableCellHandler = (editorState) {
   final inTableNodes = _inTableNodes(editorState);
   final selection = editorState.selection;
   if (_hasSelectionAndTableCell(inTableNodes, selection) &&
-      selection!.start.offset == 0) {
+      selection!.start.offset == 0 &&
+      _isFirstChildOfCell(inTableNodes.first)) {
     final nextNode = _getPreviousNode(inTableNodes, 1, 0);
-    if (_nodeHasTextChild(nextNode)) {
-      final target = nextNode!.childAtIndexOrNull(0)!;
+    final target = nextNode?.children.lastOrNull;
+    if (target != null) {
       editorState.selectionService.updateSelection(
         Selection.single(
           path: target.path,
-          startOffset: target.delta!.length,
+          startOffset: target.delta?.length ?? 0,
         ),
       );
     }
@@ -126,9 +129,10 @@ CommandShortcutEventHandler _rightInTableCellHandler = (editorState) {
   final inTableNodes = _inTableNodes(editorState);
   final selection = editorState.selection;
   if (_hasSelectionAndTableCell(inTableNodes, selection) &&
-      selection!.start.offset == inTableNodes.first.delta!.length) {
+      selection!.start.offset == (inTableNodes.first.delta?.length ?? 0) &&
+      inTableNodes.first.next == null) {
     final nextNode = _getNextNode(inTableNodes, 1, 0);
-    if (_nodeHasTextChild(nextNode)) {
+    if (nextNode != null && nextNode.children.isNotEmpty) {
       editorState.selectionService.updateSelection(
         Selection.single(
           path: nextNode!.childAtIndexOrNull(0)!.path,
@@ -184,7 +188,7 @@ CommandShortcutEventHandler _tabInTableCellHandler = (editorState) {
   final selection = editorState.selection;
   if (_hasSelectionAndTableCell(inTableNodes, selection)) {
     final nextNode = _getNextNode(inTableNodes, 1, 0);
-    if (nextNode != null && _nodeHasTextChild(nextNode)) {
+    if (nextNode != null && nextNode.children.isNotEmpty) {
       final firstChild = nextNode.childAtIndexOrNull(0);
       if (firstChild != null) {
         editorState.selection = Selection.single(
@@ -308,6 +312,8 @@ Node? _getPreviousNode(Iterable<Node> nodes, int colDiff, int rowDiff) {
 
 bool isValidPosition(int col, int row, int numCols, int numRows) =>
     col >= 0 && col < numCols && row >= 0 && row < numRows;
+
+bool _isFirstChildOfCell(Node n) => n.previous == null;
 
 bool _nodeHasTextChild(Node? n) =>
     n != null &&

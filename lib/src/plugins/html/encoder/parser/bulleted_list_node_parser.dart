@@ -40,7 +40,8 @@ class HTMLBulletedListNodeParser extends HTMLNodeParser {
     final delta = node.delta ?? Delta();
     final domNodes = deltaHTMLEncoder.convert(delta);
     domNodes.addAll(
-      processChildrenNodes(
+      processListChildrenNodes(
+        this,
         node.children,
         encodeParsers: encodeParsers,
       ),
@@ -51,4 +52,36 @@ class HTMLBulletedListNodeParser extends HTMLNodeParser {
     );
     return [element];
   }
+}
+
+/// The children of a list item as DOM nodes. A run of child list items gets its own `<ul>` / `<ol>`: a bare `<li>`
+/// inside an `<li>` is closed by an HTML parser and the child comes back one level too shallow.
+List<dom.Node> processListChildrenNodes(
+  HTMLNodeParser parser,
+  Iterable<Node> children, {
+  required List<HTMLNodeParser> encodeParsers,
+}) {
+  final result = <dom.Node>[];
+  dom.Element? run;
+  String? runType;
+  for (final child in children) {
+    final isBullet = child.type == BulletedListBlockKeys.type;
+    final isNumbered = child.type == NumberedListBlockKeys.type;
+    final items = parser.processChildrenNodes([child], encodeParsers: encodeParsers);
+    if (!isBullet && !isNumbered) {
+      run = null;
+      runType = null;
+      result.addAll(items);
+      continue;
+    }
+    if (run == null || runType != child.type) {
+      final number = child.attributes[NumberedListBlockKeys.number];
+      run = dom.Element.tag(isBullet ? HTMLTags.unorderedList : HTMLTags.orderedList);
+      if (isNumbered && number != null) run.attributes['start'] = '$number';
+      runType = child.type;
+      result.add(run);
+    }
+    items.forEach(run.append);
+  }
+  return result;
 }

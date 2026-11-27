@@ -149,6 +149,14 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
         ];
       case HTMLTags.paragraph:
         return _parseParagraphElement(element);
+      case HTMLTags.div:
+        if (_isTodoElement(element)) return [_parseTodoElement(element)];
+        return _parseParagraphElement(element);
+      case HTMLTags.section:
+        if (element.attributes.containsKey(kNestedParagraphAttr)) {
+          return [_parseNestedParagraph(element)];
+        }
+        return _parseParagraphElement(element);
       case HTMLTags.blockQuote:
         return [_parseBlockQuoteElement(element)];
       case HTMLTags.details:
@@ -158,6 +166,31 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
       default:
         return _parseParagraphElement(element);
     }
+  }
+
+  /// A to-do as our own export writes it: `<div><input type="checkbox" [checked]/>text children</div>`.
+  bool _isTodoElement(dom.Element element) {
+    final first = element.children.isEmpty ? null : element.children.first;
+    return first != null &&
+        first.localName == HTMLTags.checkbox &&
+        first.attributes['type'] == 'checkbox';
+  }
+
+  Node _parseTodoElement(dom.Element element) {
+    final checked = element.children.first.attributes.containsKey('checked');
+    final (delta, children) = _parseDeltaElement(element);
+    return todoListNode(checked: checked, delta: delta, children: children);
+  }
+
+  /// `<section data-nested-paragraph><p>text</p>children</section>`: a paragraph that owns children.
+  Node _parseNestedParagraph(dom.Element element) {
+    final head = element.children.isNotEmpty &&
+            element.children.first.localName == HTMLTags.paragraph
+        ? element.children.first
+        : null;
+    final (delta, _) = head != null ? _parseDeltaElement(head) : (Delta(), <Node>[]);
+    final rest = element.nodes.where((n) => !identical(n, head));
+    return paragraphNode(delta: delta, children: _parseElement(rest).toList());
   }
 
   Iterable<Node> _parseTable(dom.Element element) {
@@ -453,6 +486,8 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
 
     for (final child in children) {
       if (child is dom.Element) {
+        // The checkbox of a to-do or a task-list item is state, not a block of its own.
+        if (child.localName == HTMLTags.checkbox) continue;
         if (child.children.isNotEmpty &&
             HTMLTags.formattingElements.contains(child.localName) == false &&
             HTMLTags.specialElements.contains(child.localName) == false) {
@@ -580,6 +615,9 @@ class DocumentHTMLDecoder extends Converter<String, Document> {
     return result;
   }
 }
+
+/// Marks the `<section>` the encoder writes for a paragraph that has children.
+const kNestedParagraphAttr = 'data-nested-paragraph';
 
 class HTMLTags {
   static const h1 = 'h1';

@@ -8,6 +8,24 @@ enum SelectionRange {
   word,
 }
 
+/// INTERNAL (not part of the supported API; shared by `selection_commands.dart` and this file, which
+/// is why it is not library-private).
+/// PREVON PATCH 40: a block the caret can sit in: it has a rendered selectable or text. A block that is
+/// not built yet (scrolled away, or no widget in a test) still counts when it has a delta.
+bool nodeHoldsCaret(Node node) => node.selectable != null || node.delta != null;
+
+/// Start of a caret block (see [nodeHoldsCaret]).
+Position? caretStartOf(Node node) =>
+    node.selectable?.start() ??
+    (node.delta != null ? Position(path: node.path, offset: 0) : null);
+
+/// End of a caret block (see [nodeHoldsCaret]).
+Position? caretEndOf(Node node) =>
+    node.selectable?.end() ??
+    (node.delta != null
+        ? Position(path: node.path, offset: node.delta!.length)
+        : null);
+
 extension PositionExtension on Position {
   Position? moveHorizontal(
     EditorState editorState, {
@@ -20,15 +38,14 @@ extension PositionExtension on Position {
     }
 
     if (forward && offset == 0) {
-      final previousEnd = node.previous?.selectable?.end();
-      if (previousEnd != null) {
-        return previousEnd;
-      }
-      return null;
+      // PREVON PATCH 40: walk the reading order (into the last nested child above), not siblings only.
+      final previous = node.previousNodeWhere(nodeHoldsCaret);
+      return previous == null ? null : caretEndOf(previous);
     } else if (!forward) {
-      final end = node.selectable?.end();
+      final end = caretEndOf(node);
       if (end != null && offset >= end.offset) {
-        return node.next?.selectable?.start();
+        final next = node.nextNodeWhere(nodeHoldsCaret);
+        return next == null ? null : caretStartOf(next);
       }
     }
 

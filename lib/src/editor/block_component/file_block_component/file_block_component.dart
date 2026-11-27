@@ -507,16 +507,23 @@ extension InsertFile on EditorState {
     final block =
         fileNode(url: url, name: name, mime: mime, size: size, via: via);
     final transaction = this.transaction;
+    final isLast = node.next == null;
     if (node.type == ParagraphBlockKeys.type &&
         (node.delta?.isEmpty ?? false)) {
-      transaction
-        ..insertNode(node.path, block)
-        ..deleteNode(node);
+      transaction.insertNode(node.path, block);
+      // A last empty paragraph stays as the line to type in after the file.
+      if (!isLast) transaction.deleteNode(node);
     } else {
       transaction.insertNode(node.path.next, block);
+      if (isLast) transaction.insertNode(node.path.next.next, paragraphNode());
     }
+    final replaced = node.type == ParagraphBlockKeys.type &&
+        (node.delta?.isEmpty ?? false);
     transaction.afterSelection = Selection.collapsed(
-      Position(path: node.path.next, offset: 0),
+      Position(
+        path: !replaced && isLast ? node.path.next.next : node.path.next,
+        offset: 0,
+      ),
     );
     await apply(transaction);
     return true;

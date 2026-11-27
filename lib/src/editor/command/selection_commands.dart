@@ -94,12 +94,46 @@ extension SelectionTransform on EditorState {
       // The nodes are guaranteed to be in order, so we can determine which
       // nodes are at the beginning, middle, and end of the selection.
       assert(nodes.first.path < nodes.last.path);
+      // PREVON PATCH 40: the first and last text merge into one block when this holds.
+      final willMerge = nodes.first.delta != null &&
+          nodes.last.delta != null &&
+          ![nodes.first.parent?.type, nodes.last.parent?.type]
+              .any((type) => ignoreNodeTypes.contains(type));
+      // Rows after the end of the selection that hang under an ancestor of its last row (B2 when the
+      // selection ends in B1 under B). Deleting that ancestor would drop them, so they move to follow the
+      // merged block, nearest first (reading order).
+      final survivors = <Node>[];
+      if (willMerge) {
+        for (var a = nodes.last.parent; a != null; a = a.parent) {
+          if (a.parent == null) break;
+          if (a.id == nodes.first.id ||
+              a.path.isAncestorOf(nodes.first.path) ||
+              !nodes.any((n) => n.id == a!.id)) {
+            continue;
+          }
+          survivors.addAll(
+            a.children.where((c) => !nodes.any((n) => n.id == c.id)),
+          );
+        }
+      }
       for (var i = 0; i < nodes.length; i++) {
         final node = nodes[i];
 
         // The first node is at the beginning of the selection.
         // All other nodes can be deleted.
         if (i != 0) {
+          // PREVON PATCH 40: an ancestor of the last selected node (the nested row the selection ends in)
+          // that still has children outside the selection must not be deleted: that drops the unselected
+          // siblings with it. Its own text is selected, so it is emptied and stays as the parent.
+          if (!willMerge &&
+              node.children.any((c) => !nodes.any((n) => n.id == c.id)) &&
+              node.path.isAncestorOf(nodes.last.path)) {
+            final d = node.delta;
+            if (d != null && d.length > 0) {
+              transaction.deleteText(node, 0, d.length);
+            }
+            continue;
+          }
           // Never delete a table cell node child
           if (ignoreNodeTypes.contains(node.parent?.type)) {
             if (!nodes.any((n) => n.id == node.parent?.parent?.id)) {
@@ -146,17 +180,18 @@ extension SelectionTransform on EditorState {
           // combine the children of the last node into the first node.
           final last = nodes.last;
 
-          if (last.children.isNotEmpty) {
+          final moved = [...last.children, ...survivors];
+          if (moved.isNotEmpty) {
             if (indentableBlockTypes.contains(node.type)) {
               transaction.insertNodes(
                 node.path + [0],
-                last.children,
+                moved,
                 deepCopy: true,
               );
             } else {
               transaction.insertNodes(
                 node.path.next,
-                last.children,
+                moved,
                 deepCopy: true,
               );
             }
@@ -286,6 +321,25 @@ extension SelectionTransform on EditorState {
     }
 
     final delta = node.delta;
+    // PREVON PATCH 40: a block without text (image, divider) has no delta to step through: step to the
+    // neighbouring block, or stay when there is none.
+    if (delta == null) {
+      final target = direction == SelectionMoveDirection.forward
+          ? node.previousNodeWhere(nodeHoldsCaret)
+          : node.nextNodeWhere(nodeHoldsCaret);
+      final position = target == null
+          ? null
+          : (direction == SelectionMoveDirection.forward
+              ? caretEndOf(target)
+              : caretStartOf(target));
+      if (position != null) {
+        updateSelectionWithReason(
+          Selection.collapsed(position),
+          reason: SelectionUpdateReason.uiEvent,
+        );
+      }
+      return;
+    }
     switch (range) {
       case SelectionMoveRange.character:
         if (delta != null) {

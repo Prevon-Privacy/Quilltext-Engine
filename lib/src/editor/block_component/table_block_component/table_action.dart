@@ -249,6 +249,7 @@ bool _moveLine(
   final moved = <Node>[
     for (final cell in fresh)
       cell.copyWith(
+        keepIds: true,
         attributes: {
           ...cell.attributes,
           TableCellBlockKeys.colPosition: isCol
@@ -291,6 +292,62 @@ bool _moveLine(
   }
   editorState.apply(transaction);
   return true;
+}
+
+/// Where a caret cell lands after a row/column edit: the new (col,row), and
+/// [reset] when its own line was deleted (the caret then goes to the start of
+/// the neighbouring cell).
+typedef _CellMove = ({int c, int r, bool reset});
+
+/// Applies [transaction] and keeps the caret in the same logical cell. Cells are
+/// stored column-major (index = col * rows + row), so a bare path would point at
+/// a different cell once a line is added or removed. [map] gives the new cell of
+/// an old (col,row); [oldRows] / [newRows] are the row counts before / after.
+void _applyKeepingCaret(
+  Transaction transaction,
+  Node table,
+  EditorState editorState,
+  int oldRows,
+  int newRows,
+  _CellMove Function(int c, int r) map,
+) {
+  final sel = editorState.selection;
+  final tp = table.path;
+  var touched = false;
+  Position remap(Position p) {
+    final path = p.path;
+    if (path.length <= tp.length ||
+        !path.sublist(0, tp.length).equals(tp)) {
+      return p;
+    }
+    touched = true;
+    final idx = path[tp.length];
+    final m = map(idx ~/ oldRows, idx % oldRows);
+    final cell = m.c * newRows + m.r;
+    if (m.reset) return Position(path: [...tp, cell, 0], offset: 0);
+    return Position(
+      path: [...tp, cell, ...path.sublist(tp.length + 1)],
+      offset: p.offset,
+    );
+  }
+
+  if (sel != null) {
+    final next = Selection(start: remap(sel.start), end: remap(sel.end));
+    if (touched) transaction.afterSelection = next;
+  }
+  editorState.apply(transaction, withUpdateSelection: touched);
+}
+
+_CellMove _deleteMap(int idx, int c, int r, int count, bool isCol) {
+  final i = isCol ? c : r;
+  int fix(int v) => v > idx ? v - 1 : v;
+  if (i == idx) {
+    final to = idx < count - 1 ? idx : idx - 1;
+    return isCol
+        ? (c: to, r: r, reset: true)
+        : (c: c, r: to, reset: true);
+  }
+  return isCol ? (c: fix(c), r: r, reset: false) : (c: c, r: fix(r), reset: false);
 }
 
 void _addCol(Node tableNode, int position, EditorState editorState) {
@@ -339,24 +396,29 @@ void _addCol(Node tableNode, int position, EditorState editorState) {
   } else {
     insertPath = getCellNode(tableNode, position - 1, rowsLen - 1)!.path.next;
   }
-  // TODO(zoli): this calls notifyListener rowsLen+1 times. isn't there a better
-  // way?
   transaction.insertNodes(insertPath, cellNodes);
   transaction.updateNode(tableNode, {TableBlockKeys.colsLen: colsLen + 1});
 
-  editorState.apply(transaction, withUpdateSelection: false);
+  _applyKeepingCaret(
+    transaction,
+    tableNode,
+    editorState,
+    rowsLen,
+    rowsLen,
+    (c, r) => (c: c >= position ? c + 1 : c, r: r, reset: false),
+  );
 }
 
-void _addRow(Node tableNode, int position, EditorState editorState) async {
+void _addRow(Node tableNode, int position, EditorState editorState) {
   assert(position >= 0);
 
   final int rowsLen = tableNode.attributes[TableBlockKeys.rowsLen];
   final int colsLen = tableNode.attributes[TableBlockKeys.colsLen];
 
-  // insert new rows
-  var error = false;
+  // One transaction for the whole edit: one apply, one undo step, and no
+  // half-built table is ever visible or synced.
+  final transaction = editorState.transaction;
 
-  // generate new table cell nodes & update node attributes
   for (var i = 0; i < colsLen; i++) {
     final firstCellInCol = getCellNode(tableNode, i, 0);
     final colBgColor =
@@ -374,59 +436,37 @@ void _addRow(Node tableNode, int position, EditorState editorState) async {
       children: [paragraphNode()],
     );
 
-    late Path insertPath;
-    if (position == 0) {
-      final firstCellInCol = getCellNode(tableNode, i, 0);
-      if (firstCellInCol == null) {
-        error = true;
-        break;
-      }
-      insertPath = firstCellInCol.path;
-    } else {
-      final cellInPrevRow = getCellNode(tableNode, i, position - 1);
-      if (cellInPrevRow == null) {
-        error = true;
-        break;
-      }
-      insertPath = cellInPrevRow.path.next;
+    final anchor = position == 0
+        ? firstCellInCol
+        : getCellNode(tableNode, i, position - 1);
+    if (anchor == null) {
+      AppFlowyEditorLog.editor.debug('unable to insert row');
+      return;
     }
+    final insertPath = position == 0 ? anchor.path : anchor.path.next;
 
-    final transaction = editorState.transaction;
-
-    if (position != rowsLen) {
-      for (var j = position; j < rowsLen; j++) {
-        final cellNode = getCellNode(tableNode, i, j);
-        if (cellNode == null) {
-          error = true;
-          break;
-        }
-        transaction.updateNode(
-          cellNode,
-          {
-            TableCellBlockKeys.rowPosition: j + 1,
-          },
-        );
+    for (var j = position; j < rowsLen; j++) {
+      final cellNode = getCellNode(tableNode, i, j);
+      if (cellNode == null) {
+        AppFlowyEditorLog.editor.debug('unable to insert row');
+        return;
       }
+      transaction.updateNode(cellNode, {TableCellBlockKeys.rowPosition: j + 1});
     }
 
     transaction.insertNode(insertPath, node);
-
-    await editorState.apply(transaction, withUpdateSelection: false);
   }
 
-  if (error) {
-    AppFlowyEditorLog.editor.debug('unable to insert row');
-    return;
-  }
+  transaction.updateNode(tableNode, {TableBlockKeys.rowsLen: rowsLen + 1});
 
-  final transaction = editorState.transaction;
-
-  // update the row length
-  transaction.updateNode(tableNode, {
-    TableBlockKeys.rowsLen: rowsLen + 1,
-  });
-
-  await editorState.apply(transaction, withUpdateSelection: false);
+  _applyKeepingCaret(
+    transaction,
+    tableNode,
+    editorState,
+    rowsLen,
+    rowsLen + 1,
+    (c, r) => (c: c, r: r >= position ? r + 1 : r, reset: false),
+  );
 }
 
 void _deleteCol(Node tableNode, int col, EditorState editorState) {
@@ -440,25 +480,31 @@ void _deleteCol(Node tableNode, int col, EditorState editorState) {
       final emptyParagraph = paragraphNode();
       transaction.insertNode(tableNode.path, emptyParagraph);
     }
+    // Not disposed: undo puts this very node back.
     transaction.deleteNode(tableNode);
-    tableNode.dispose();
-  } else {
-    List<Node> nodes = [];
-    for (var i = 0; i < rowsLen; i++) {
-      nodes.add(getCellNode(tableNode, col, i)!);
-    }
-    transaction.deleteNodes(nodes);
-
-    _updateCellPositions(tableNode, editorState, col + 1, 0, -1, 0);
-
-    transaction.updateNode(tableNode, {
-      TableBlockKeys.colsLen: colsLen - 1,
-      if (col == 0 && tableNode.attributes[TableBlockKeys.headerCol] == true)
-        TableBlockKeys.headerCol: false,
-    });
+    editorState.apply(transaction, withUpdateSelection: false);
+    return;
   }
 
-  editorState.apply(transaction, withUpdateSelection: false);
+  _updateCellPositions(
+      transaction, tableNode, col + 1, 0, -1, 0);
+  transaction.deleteNodes([
+    for (var i = 0; i < rowsLen; i++) getCellNode(tableNode, col, i)!,
+  ]);
+  transaction.updateNode(tableNode, {
+    TableBlockKeys.colsLen: colsLen - 1,
+    if (col == 0 && tableNode.attributes[TableBlockKeys.headerCol] == true)
+      TableBlockKeys.headerCol: false,
+  });
+
+  _applyKeepingCaret(
+    transaction,
+    tableNode,
+    editorState,
+    rowsLen,
+    rowsLen,
+    (c, r) => _deleteMap(col, c, r, colsLen, true),
+  );
 }
 
 void _deleteRow(Node tableNode, int row, EditorState editorState) {
@@ -472,25 +518,30 @@ void _deleteRow(Node tableNode, int row, EditorState editorState) {
       final emptyParagraph = paragraphNode();
       transaction.insertNode(tableNode.path, emptyParagraph);
     }
+    // Not disposed: undo puts this very node back.
     transaction.deleteNode(tableNode);
-    tableNode.dispose();
-  } else {
-    List<Node> nodes = [];
-    for (var i = 0; i < colsLen; i++) {
-      nodes.add(getCellNode(tableNode, i, row)!);
-    }
-    transaction.deleteNodes(nodes);
-
-    _updateCellPositions(tableNode, editorState, 0, row + 1, 0, -1);
-
-    transaction.updateNode(tableNode, {
-      TableBlockKeys.rowsLen: rowsLen - 1,
-      if (row == 0 && tableNode.attributes[TableBlockKeys.headerRow] == true)
-        TableBlockKeys.headerRow: false,
-    });
+    editorState.apply(transaction, withUpdateSelection: false);
+    return;
   }
 
-  editorState.apply(transaction, withUpdateSelection: false);
+  _updateCellPositions(transaction, tableNode, 0, row + 1, 0, -1);
+  transaction.deleteNodes([
+    for (var i = 0; i < colsLen; i++) getCellNode(tableNode, i, row)!,
+  ]);
+  transaction.updateNode(tableNode, {
+    TableBlockKeys.rowsLen: rowsLen - 1,
+    if (row == 0 && tableNode.attributes[TableBlockKeys.headerRow] == true)
+      TableBlockKeys.headerRow: false,
+  });
+
+  _applyKeepingCaret(
+    transaction,
+    tableNode,
+    editorState,
+    rowsLen,
+    rowsLen - 1,
+    (c, r) => _deleteMap(row, c, r, rowsLen, false),
+  );
 }
 
 void _duplicateCol(Node tableNode, int col, EditorState editorState) {
@@ -511,28 +562,37 @@ void _duplicateCol(Node tableNode, int col, EditorState editorState) {
       ),
     );
   }
+  _updateCellPositions(transaction, tableNode, col + 1, 0, 1, 0);
   transaction.insertNodes(
     getCellNode(tableNode, col, rowsLen - 1)!.path.next,
     nodes,
   );
 
-  _updateCellPositions(tableNode, editorState, col + 1, 0, 1, 0);
-
   transaction.updateNode(tableNode, {TableBlockKeys.colsLen: colsLen + 1});
 
-  editorState.apply(transaction, withUpdateSelection: false);
+  _applyKeepingCaret(
+    transaction,
+    tableNode,
+    editorState,
+    rowsLen,
+    rowsLen,
+    (c, r) => (c: c > col ? c + 1 : c, r: r, reset: false),
+  );
 }
 
-void _duplicateRow(Node tableNode, int row, EditorState editorState) async {
-  Transaction transaction = editorState.transaction;
-  _updateCellPositions(tableNode, editorState, 0, row + 1, 0, 1);
-  await editorState.apply(transaction, withUpdateSelection: false);
-
+void _duplicateRow(Node tableNode, int row, EditorState editorState) {
+  final transaction = editorState.transaction;
   final int rowsLen = tableNode.attributes[TableBlockKeys.rowsLen],
       colsLen = tableNode.attributes[TableBlockKeys.colsLen];
+
   for (var i = 0; i < colsLen; i++) {
+    for (var j = row + 1; j < rowsLen; j++) {
+      transaction.updateNode(getCellNode(tableNode, i, j)!, {
+        TableCellBlockKeys.colPosition: i,
+        TableCellBlockKeys.rowPosition: j + 1,
+      });
+    }
     final node = getCellNode(tableNode, i, row)!;
-    transaction = editorState.transaction;
     transaction.insertNode(
       node.path.next,
       node.copyWith(
@@ -543,12 +603,18 @@ void _duplicateRow(Node tableNode, int row, EditorState editorState) async {
         },
       ),
     );
-    await editorState.apply(transaction, withUpdateSelection: false);
   }
 
-  transaction = editorState.transaction;
   transaction.updateNode(tableNode, {TableBlockKeys.rowsLen: rowsLen + 1});
-  editorState.apply(transaction, withUpdateSelection: false);
+
+  _applyKeepingCaret(
+    transaction,
+    tableNode,
+    editorState,
+    rowsLen,
+    rowsLen + 1,
+    (c, r) => (c: c, r: r > row ? r + 1 : r, reset: false),
+  );
 }
 
 void _setColBgColor(
@@ -668,16 +734,16 @@ dynamic newCellNode(Node tableNode, n) {
   return n;
 }
 
+/// Queues the position shifts on [transaction]; the caller applies it, so a row
+/// or column edit stays ONE transaction.
 void _updateCellPositions(
+  Transaction transaction,
   Node tableNode,
-  EditorState editorState,
   int fromCol,
   int fromRow,
   int addToCol,
   int addToRow,
 ) {
-  final transaction = editorState.transaction;
-
   final int rowsLen = tableNode.attributes[TableBlockKeys.rowsLen],
       colsLen = tableNode.attributes[TableBlockKeys.colsLen];
 
@@ -689,6 +755,4 @@ void _updateCellPositions(
       });
     }
   }
-
-  editorState.apply(transaction, withUpdateSelection: false);
 }

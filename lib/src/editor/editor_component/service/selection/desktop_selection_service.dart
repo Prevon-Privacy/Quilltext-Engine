@@ -313,6 +313,13 @@ class _DesktopSelectionServiceWidgetState
         return updateSelection(Selection(start: shiftAnchor, end: p));
       }
     }
+    // A fast second click on a picture is still a click on it: open it again
+    // (grip bands skipped, as for a single click) instead of picking a "word".
+    final tapped = node?.selectable?.getPositionInOffset(offset);
+    if (tapped != null &&
+        openImageAtPosition(editorState, tapped, offset, avoidGrips: true)) {
+      return;
+    }
     final selection = node?.selectable?.getWordBoundaryInOffset(offset);
     if (selection == null) {
       clearSelection();

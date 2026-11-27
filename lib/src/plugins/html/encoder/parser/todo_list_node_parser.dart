@@ -33,7 +33,7 @@ class HTMLTodoListNodeParser extends HTMLNodeParser {
     }
     domNodes.insert(0, elementNode);
     domNodes.addAll(
-      processChildrenNodes(node.children, encodeParsers: encodeParsers),
+      processListChildrenNodes(this, node.children, encodeParsers: encodeParsers),
     );
 
     final element =
