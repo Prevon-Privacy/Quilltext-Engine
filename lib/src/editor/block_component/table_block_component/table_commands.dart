@@ -11,6 +11,7 @@ final List<CommandShortcutEvent> tableCommands = [
   tabInTableCell,
   shiftTabInTableCell,
   backSpaceInTableCell,
+  deleteInTableCell,
 ];
 
 final CommandShortcutEvent enterInTableCell = CommandShortcutEvent(
@@ -72,6 +73,20 @@ final CommandShortcutEvent backSpaceInTableCell = CommandShortcutEvent(
       AppFlowyEditorL10n.current.cmdTableStopAtTheBeginningOfTheCell,
   command: 'backspace',
   handler: _backspaceInTableCellHandler,
+);
+
+final CommandShortcutEvent deleteInTableCell = CommandShortcutEvent(
+  key: 'Don\'t delete across table cells',
+  getDescription: () =>
+      AppFlowyEditorL10n.current.cmdTableStopAtTheBeginningOfTheCell,
+  command: 'delete',
+  handler: (editorState) {
+    final selection = editorState.selection;
+    if (selection == null || selection.isCollapsed) {
+      return KeyEventResult.ignored;
+    }
+    return _crossCellSelection(editorState, selection);
+  },
 );
 
 CommandShortcutEventHandler _enterInTableCellHandler = (editorState) {
@@ -223,9 +238,9 @@ CommandShortcutEventHandler _shiftTabInTableCellHandler = (editorState) {
 
 CommandShortcutEventHandler _backspaceInTableCellHandler = (editorState) {
   final selection = editorState.selection;
-  if (selection == null || !selection.isCollapsed) {
-    return KeyEventResult.ignored;
-  }
+  if (selection == null) return KeyEventResult.ignored;
+  if (!selection.isCollapsed)
+    return _crossCellSelection(editorState, selection);
 
   final position = selection.start;
   final node = editorState.getNodeAtPath(position.path);
@@ -239,6 +254,23 @@ CommandShortcutEventHandler _backspaceInTableCellHandler = (editorState) {
 
   return KeyEventResult.ignored;
 };
+
+/// A selection that starts in one cell and ends in another cannot be deleted
+/// (it would merge or empty cells); select-all keeps its own path.
+KeyEventResult _crossCellSelection(EditorState editorState, Selection sel) {
+  if (editorState.selectionUpdateReason == SelectionUpdateReason.selectAll) {
+    return KeyEventResult.ignored;
+  }
+  Node? cellOf(Position p) => editorState
+      .getNodeAtPath(p.path)
+      ?.findParent((n) => n.type == TableCellBlockKeys.type);
+  final a = cellOf(sel.start);
+  final b = cellOf(sel.end);
+  if (a != null && b != null && !identical(a, b)) {
+    return KeyEventResult.handled;
+  }
+  return KeyEventResult.ignored;
+}
 
 Iterable<Node> _inTableNodes(EditorState editorState) {
   final selection = editorState.selection;

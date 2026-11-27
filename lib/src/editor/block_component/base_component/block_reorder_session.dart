@@ -46,7 +46,8 @@ class BlockReorderSession {
     );
     editorState.scrollService?.startAutoScroll(global);
     final slot = resolveReorderDrop(editorState, node, global,
-        sameParentOnly: _sameParentOnly)?.target;
+            sameParentOnly: _sameParentOnly)
+        ?.target;
     if (slot != null &&
         (_lastTickPath == null || !slot.equals(_lastTickPath!))) {
       if (_lastTickPath != null) reorderDropTick();
@@ -55,18 +56,40 @@ class BlockReorderSession {
   }
 
   /// Ends the gesture. When [dropped] and the drag really started, moves the
-  /// block to the slot under the last pointer position.
+  /// block to the slot under the last pointer position. Runs once: a second
+  /// call (Flutter reports a drop AND a cancel) does nothing.
   void finish({required bool dropped}) {
-    reorderDraggingNode.value = null;
-    _lastTickPath = null;
-    editorState.selectionService.removeDropTarget();
-    editorState.scrollService?.stopAutoScroll();
+    final global = _lastGlobal;
+    final wasActive = _cleanup();
+    if (!dropped || !wasActive || global == null) return;
+    _commit(global);
+  }
+
+  /// Cleanup for an owner that is being disposed mid-drag. Flutter's drag
+  /// callbacks die with the owner's State, so nothing else would end the drag:
+  /// the overlays go now and the block still lands where the finger last was
+  /// (after the frame, never inside the unmount), unless it left the document.
+  void dispose() {
+    final global = _lastGlobal;
+    if (!_cleanup() || global == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _commit(global));
+  }
+
+  /// Drops every trace of the drag. Returns whether one was running.
+  bool _cleanup() {
     final wasActive = _active;
     _active = false;
-    final global = _lastGlobal;
     _lastGlobal = null;
-    if (!dropped || !wasActive || global == null) return;
+    _lastTickPath = null;
+    if (wasActive || reorderDraggingNode.value == node) {
+      reorderDraggingNode.value = null;
+    }
+    editorState.selectionService.removeDropTarget();
+    editorState.scrollService?.stopAutoScroll();
+    return wasActive;
+  }
 
+  void _commit(Offset global) {
     final drop = resolveReorderDrop(editorState, node, global,
         sameParentOnly: _sameParentOnly);
     if (drop == null) return;
@@ -81,23 +104,15 @@ class BlockReorderSession {
     }
   }
 
-  /// Cleanup for an owner that is being disposed mid-drag.
-  void dispose() {
-    if (_active) {
-      editorState.selectionService.removeDropTarget();
-      editorState.scrollService?.stopAutoScroll();
-      reorderDraggingNode.value = null;
-      _active = false;
-    }
-  }
-
   /// The row the drop indicator is drawn against: the resolved slot's anchor,
   /// whatever node the selection service hit under the pointer.
   Node _anchorForPointer(BuildContext context, Node candidate) {
     final global = _lastGlobal;
     if (global == null) return candidate;
     return resolveReorderDrop(editorState, node, global,
-        sameParentOnly: _sameParentOnly)?.anchor ?? candidate;
+                sameParentOnly: _sameParentOnly)
+            ?.anchor ??
+        candidate;
   }
 }
 
@@ -162,8 +177,7 @@ ReorderDrop? resolveReorderDrop(
   if (hit != null && hitBox != null) {
     anchor = hit;
     final top = hitBox.localToGlobal(Offset.zero).dy;
-    final childBox =
-        _childrenShown(hit) ? _box(hit.children.first) : null;
+    final childBox = _childrenShown(hit) ? _box(hit.children.first) : null;
     final ownBottom =
         childBox?.localToGlobal(Offset.zero).dy ?? top + hitBox.size.height;
     after = global.dy > (top + ownBottom) / 2;
@@ -224,7 +238,8 @@ ReorderDrop? resolveReorderDrop(
   // zone under the finger.
   final ordered = [target, ...candidates.where((c) => !c.equals(target))];
   for (final t in ordered) {
-    if (_dropAllowed(editorState, dragged, t, sameParentOnly)) return ReorderDrop(t, anchor);
+    if (_dropAllowed(editorState, dragged, t, sameParentOnly))
+      return ReorderDrop(t, anchor);
   }
   return null;
 }

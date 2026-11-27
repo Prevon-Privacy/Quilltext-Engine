@@ -57,10 +57,58 @@ CommandShortcutEventHandler _moveCursorToBeginCommandHandler = (editorState) {
   if (isRTL(editorState)) {
     editorState.moveCursorBackward(SelectionMoveRange.line);
   } else {
-    editorState.moveCursorForward(SelectionMoveRange.line);
+    final edge = visualLineEdge(editorState, selection.end, atStart: true);
+    if (edge != null) {
+      editorState.updateSelectionWithReason(
+        Selection.collapsed(edge),
+        reason: SelectionUpdateReason.uiEvent,
+      );
+    } else {
+      editorState.moveCursorForward(SelectionMoveRange.line);
+    }
   }
   return KeyEventResult.handled;
 };
+
+/// The start (or end) of the wrapped visual line holding [from], or null when
+/// the block is one line, the caret already sits on that edge (so a second
+/// press falls back to the block edge), or the layout is unavailable.
+Position? visualLineEdge(
+  EditorState editorState,
+  Position from, {
+  required bool atStart,
+}) {
+  final selectable = editorState.getNodeAtPath(from.path)?.selectable;
+  if (selectable == null) {
+    return null;
+  }
+  final caret = selectable.getCursorRectInPosition(from);
+  if (caret == null) {
+    return null;
+  }
+  final block = selectable.getBlockRect();
+  // getPositionInOffset takes a global offset; the caret rect is local.
+  final probe = selectable.localToGlobal(
+    Offset(atStart ? block.left : block.right, caret.center.dy),
+  );
+  var edge = selectable.getPositionInOffset(probe);
+  if (!atStart && edge.offset > 0) {
+    // A wrapped line ends after its trailing space, which the caret draws on
+    // the next line: stop before it so a second End press stays on this line.
+    final plain = editorState.getNodeAtPath(from.path)?.delta?.toPlainText();
+    if (plain != null && plain[edge.offset - 1] == ' ') {
+      edge = Position(path: edge.path, offset: edge.offset - 1);
+    }
+  }
+  if (edge.path.equals(from.path) == false || edge.offset == from.offset) {
+    return null;
+  }
+  final blockEdge = atStart ? selectable.start() : selectable.end();
+  if (edge.offset == blockEdge.offset) {
+    return null;
+  }
+  return edge;
+}
 
 // arrow left key + alt
 // move the cursor to the left word
@@ -219,7 +267,8 @@ CommandShortcutEventHandler _moveCursorBeginSelectCommandHandler =
   var end = selection.end;
   final position = isRTL(editorState)
       ? nodes.last.selectable?.end()
-      : nodes.last.selectable?.start();
+      : visualLineEdge(editorState, selection.end, atStart: true) ??
+          nodes.last.selectable?.start();
   if (position != null) {
     end = position;
   }

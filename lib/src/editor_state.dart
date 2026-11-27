@@ -585,11 +585,8 @@ class EditorState {
         whole.add(node);
         copy = node.copyWith();
       } else {
+        // A copy never carries the source subtree.
         copy = node.copyWith(children: const <Node>[]);
-        // Belt and braces: a copy never carries the source subtree.
-        for (final kid in copy.children.toList()) {
-          kid.unlink();
-        }
       }
       copies[node] = copy;
       firstSrc ??= node;

@@ -110,15 +110,22 @@ class _BlockHoverActionHandleState extends State<BlockHoverActionHandle> {
   late final EditorState editorState =
       Provider.of<EditorState>(context, listen: false);
 
-  late final BlockReorderSession _session =
-      BlockReorderSession(editorState, widget.node);
+  /// One session per drag, on the node the row shows when the drag starts (a
+  /// rebuild may hand this State another node).
+  BlockReorderSession? _session;
+
+  void _startDrag() {
+    _session?.finish(dropped: false);
+    _session = BlockReorderSession(editorState, widget.node)..start();
+    widget.state.alwaysShowActions = true;
+  }
 
   bool get _collapsed =>
       widget.node.attributes[blockComponentCollapsed] == true;
 
   @override
   void dispose() {
-    _session.dispose();
+    _session?.dispose();
     super.dispose();
   }
 
@@ -150,11 +157,8 @@ class _BlockHoverActionHandleState extends State<BlockHoverActionHandle> {
           node: widget.node,
           editorState: editorState,
         ),
-        onDragStarted: () {
-          _session.start();
-          widget.state.alwaysShowActions = true;
-        },
-        onDragUpdate: (d) => _session.update(d.globalPosition),
+        onDragStarted: _startDrag,
+        onDragUpdate: (d) => _session?.update(d.globalPosition),
         onDragEnd: ({required bool dropped}) => _finishDrag(dropped: dropped),
         invisible: true,
       );
@@ -182,11 +186,8 @@ class _BlockHoverActionHandleState extends State<BlockHoverActionHandle> {
         data: widget.node,
         dragAnchorStrategy: rowAnchoredDragAnchor(widget.node),
         axis: Axis.vertical,
-        onDragStarted: () {
-          _session.start();
-          widget.state.alwaysShowActions = true;
-        },
-        onDragUpdate: (d) => _session.update(d.globalPosition),
+        onDragStarted: _startDrag,
+        onDragUpdate: (d) => _session?.update(d.globalPosition),
         onDragEnd: (_) => _finishDrag(dropped: true),
         onDraggableCanceled: (_, __) => _finishDrag(dropped: false),
         feedback: ReorderDragFeedback(
@@ -212,7 +213,7 @@ class _BlockHoverActionHandleState extends State<BlockHoverActionHandle> {
   }
 
   void _finishDrag({required bool dropped}) {
-    widget.state.alwaysShowActions = false;
-    _session.finish(dropped: dropped);
+    if (mounted) widget.state.alwaysShowActions = false;
+    _session?.finish(dropped: dropped);
   }
 }

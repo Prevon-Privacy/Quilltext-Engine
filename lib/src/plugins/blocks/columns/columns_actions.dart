@@ -326,7 +326,24 @@ class ColumnsActions {
     return false;
   }
 
-  /// Puts a broken columns block right (one undo step): an empty column gets
+  /// Applies a repair so it lands in the undo step of the edit that broke the
+  /// block: not recorded on its own, its operations join the newest history
+  /// item (when there is none, e.g. a document loaded broken, it is simply not
+  /// undoable). One Ctrl+Z then reverts the edit and its repair together.
+  static void _applyRepair(Transaction transaction, EditorState editorState) {
+    final undo = editorState.undoManager;
+    final item = undo.undoStack.isNonEmpty && !undo.isRedoing
+        ? undo.undoStack.last
+        : null;
+    editorState.apply(
+      transaction,
+      withUpdateSelection: false,
+      options: const ApplyOptions(recordUndo: false),
+    );
+    item?.addAll(transaction.operations);
+  }
+
+  /// Puts a broken columns block right (joins the triggering edit's undo step): an empty column gets
   /// an empty paragraph, a block left with no column is removed, and one left
   /// with a single column dissolves. Returns false when nothing needed doing.
   static bool repair(Node columns, EditorState editorState) {
@@ -340,7 +357,7 @@ class ColumnsActions {
         transaction.insertNode(columns.path.next, paragraphNode());
       }
       transaction.deleteNode(columns);
-      editorState.apply(transaction, withUpdateSelection: false);
+      _applyRepair(transaction, editorState);
       return true;
     }
 
@@ -358,7 +375,7 @@ class ColumnsActions {
           ..insertNodes(columns.path.next, blocks, keepIds: true)
           ..deleteNode(columns);
       }
-      editorState.apply(transaction, withUpdateSelection: false);
+      _applyRepair(transaction, editorState);
       return true;
     }
 
@@ -370,7 +387,7 @@ class ColumnsActions {
       }
     }
     if (!changed) return false;
-    editorState.apply(transaction, withUpdateSelection: false);
+    _applyRepair(transaction, editorState);
     return true;
   }
 

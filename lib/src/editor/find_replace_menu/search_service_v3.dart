@@ -66,6 +66,14 @@ class SearchServiceV3 {
   }
 
   void dispose() {
+    // Clear the search highlight so it does not outlive the find bar.
+    if (!editorState.isDisposed && matchWrappers.value.isNotEmpty) {
+      editorState.updateSelectionWithReason(
+        null,
+        reason: SelectionUpdateReason.searchHighlight,
+        extraInfo: {selectionExtraInfoDoNotAttachTextService: true},
+      );
+    }
     matchWrappers.dispose();
     currentSelectedIndex.dispose();
   }
@@ -190,9 +198,7 @@ class SearchServiceV3 {
   /// After replacing the selected word, this method selects the next
   /// matched word if that exists.
   Future<void> replaceSelectedWord(String replaceText) async {
-    if (replaceText.isEmpty ||
-        queriedPattern.isEmpty ||
-        matchWrappers.value.isEmpty) {
+    if (queriedPattern.isEmpty || matchWrappers.value.isEmpty) {
       return;
     }
 
@@ -221,9 +227,7 @@ class SearchServiceV3 {
 
   /// Replaces all the found occurrences of pattern with replaceText
   void replaceAllMatches(String replaceText) {
-    if (replaceText.isEmpty ||
-        queriedPattern.isEmpty ||
-        matchWrappers.value.isEmpty) {
+    if (queriedPattern.isEmpty || matchWrappers.value.isEmpty) {
       return;
     }
 

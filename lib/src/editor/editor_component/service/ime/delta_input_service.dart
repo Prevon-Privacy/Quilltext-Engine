@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:prevon_quilltext_engine/prevon_quilltext_engine.dart';
 import 'package:prevon_quilltext_engine/src/editor/editor_component/service/ime/text_input_service.dart';
+import 'package:prevon_quilltext_engine/src/editor/editor_component/service/ime/text_diff.dart';
 import 'package:flutter/services.dart';
 
 class DeltaTextInputService extends TextInputService
@@ -151,9 +152,10 @@ class DeltaTextInputService extends TextInputService
     if (selectorName == 'deleteBackward:') {
       final oldText = currentTextEditingValue.text;
       final selection = currentTextEditingValue.selection;
+      final step = backspaceLength(oldText, selection.start);
       final deleteRange = selection.isCollapsed
           ? TextRange(
-              start: selection.start - 1,
+              start: selection.start - step,
               end: selection.end,
             )
           : selection;

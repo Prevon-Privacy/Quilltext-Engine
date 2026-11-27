@@ -57,7 +57,15 @@ CommandShortcutEventHandler _moveCursorToEndCommandHandler = (editorState) {
   if (isRTL(editorState)) {
     editorState.moveCursorForward(SelectionMoveRange.line);
   } else {
-    editorState.moveCursorBackward(SelectionMoveRange.line);
+    final edge = visualLineEdge(editorState, selection.end, atStart: false);
+    if (edge != null) {
+      editorState.updateSelectionWithReason(
+        Selection.collapsed(edge),
+        reason: SelectionUpdateReason.uiEvent,
+      );
+    } else {
+      editorState.moveCursorBackward(SelectionMoveRange.line);
+    }
   }
   return KeyEventResult.handled;
 };
@@ -222,7 +230,8 @@ CommandShortcutEventHandler _moveCursorEndSelectCommandHandler = (editorState) {
   var end = selection.end;
   final position = isRTL(editorState)
       ? nodes.last.selectable?.start()
-      : nodes.last.selectable?.end();
+      : visualLineEdge(editorState, selection.end, atStart: false) ??
+          nodes.last.selectable?.end();
   if (position != null) {
     end = position;
   }

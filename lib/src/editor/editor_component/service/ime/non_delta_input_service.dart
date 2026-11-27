@@ -232,15 +232,17 @@ class NonDeltaTextInputService extends TextInputService with TextInputClient {
     if (selectorName == _deleteBackwardSelectorName) {
       final oldText = currentTextEditingValue.text;
       final selection = currentTextEditingValue.selection;
+      final step = backspaceLength(oldText, selection.start);
       final deleteRange = selection.isCollapsed
           ? TextRange(
-              start: selection.start - 1,
+              start: selection.start - step,
               end: selection.end,
             )
           : selection;
       final deleteSelection = TextSelection(
-        baseOffset: selection.baseOffset - 1,
-        extentOffset: selection.extentOffset - 1,
+        baseOffset: selection.baseOffset - (selection.isCollapsed ? step : 1),
+        extentOffset:
+            selection.extentOffset - (selection.isCollapsed ? step : 1),
       );
 
       if (!deleteRange.isValid) {
