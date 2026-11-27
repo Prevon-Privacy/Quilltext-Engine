@@ -22,6 +22,11 @@ class BlockReorderSession {
   /// completed-section divider, which moves a whole group of rows.
   final void Function(int targetIndex)? onDrop;
 
+  /// A session that moves a whole group through [onDrop] (the checklist's
+  /// completed rows) can only reorder within one parent: a drop anywhere else
+  /// would move the divider row alone and leave the group behind.
+  bool get _sameParentOnly => onDrop != null;
+
   bool _active = false;
   Offset? _lastGlobal;
   Path? _lastTickPath;
@@ -40,7 +45,8 @@ class BlockReorderSession {
       interceptor: _anchorForPointer,
     );
     editorState.scrollService?.startAutoScroll(global);
-    final slot = resolveReorderDrop(editorState, node, global)?.target;
+    final slot = resolveReorderDrop(editorState, node, global,
+        sameParentOnly: _sameParentOnly)?.target;
     if (slot != null &&
         (_lastTickPath == null || !slot.equals(_lastTickPath!))) {
       if (_lastTickPath != null) reorderDropTick();
@@ -61,7 +67,8 @@ class BlockReorderSession {
     _lastGlobal = null;
     if (!dropped || !wasActive || global == null) return;
 
-    final drop = resolveReorderDrop(editorState, node, global);
+    final drop = resolveReorderDrop(editorState, node, global,
+        sameParentOnly: _sameParentOnly);
     if (drop == null) return;
     if (drop.target.parent.equals(node.path.parent)) {
       if (onDrop != null) {
@@ -89,7 +96,8 @@ class BlockReorderSession {
   Node _anchorForPointer(BuildContext context, Node candidate) {
     final global = _lastGlobal;
     if (global == null) return candidate;
-    return resolveReorderDrop(editorState, node, global)?.anchor ?? candidate;
+    return resolveReorderDrop(editorState, node, global,
+        sameParentOnly: _sameParentOnly)?.anchor ?? candidate;
   }
 }
 
@@ -133,8 +141,9 @@ RenderBox? _box(Node n) {
 ReorderDrop? resolveReorderDrop(
   EditorState editorState,
   Node dragged,
-  Offset global,
-) {
+  Offset global, {
+  bool sameParentOnly = false,
+}) {
   final rows = _dropRows(editorState);
   if (rows.isEmpty) return null;
   Node? hit;
@@ -215,16 +224,22 @@ ReorderDrop? resolveReorderDrop(
   // zone under the finger.
   final ordered = [target, ...candidates.where((c) => !c.equals(target))];
   for (final t in ordered) {
-    if (_dropAllowed(editorState, dragged, t)) return ReorderDrop(t, anchor);
+    if (_dropAllowed(editorState, dragged, t, sameParentOnly)) return ReorderDrop(t, anchor);
   }
   return null;
 }
 
 /// Whether [dragged] may land at slot [target] (a path before the move).
-bool _dropAllowed(EditorState editorState, Node dragged, Path target) {
+bool _dropAllowed(
+  EditorState editorState,
+  Node dragged,
+  Path target,
+  bool sameParentOnly,
+) {
   if (_isInside(dragged.path, target)) return false;
   final parentPath = target.parent;
   if (parentPath.equals(dragged.path.parent)) return true;
+  if (sameParentOnly) return false;
   if (!movableBlockTypes.contains(dragged.type)) return false;
   if (target.length > 1) {
     final parent = editorState.getNodeAtPath(parentPath);

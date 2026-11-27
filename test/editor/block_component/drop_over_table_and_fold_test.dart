@@ -59,4 +59,19 @@ void main() {
     expect(low?.target, [2], reason: 'a drop inside a fold would be hidden');
     await tester.pump(const Duration(milliseconds: 100));
   });
+
+  testWidgets('a group drag (sameParentOnly) never leaves its parent',
+      (tester) async {
+    final s = await pump(tester, [
+      bulletedListNode(text: 'A', children: [bulletedListNode(text: 'x')]),
+      paragraphNode(text: 'm'),
+    ]);
+    final mover = s.getNodeAtPath([1])!;
+    final free = resolveReorderDrop(s, mover, inside(s, [0], frac: 0.4));
+    expect(free?.target, [0, 0], reason: 'a single row may nest');
+    final locked = resolveReorderDrop(s, mover, inside(s, [0], frac: 0.4),
+        sameParentOnly: true);
+    expect(locked == null || locked.target.length == 1, isTrue);
+    await tester.pump(const Duration(milliseconds: 100));
+  });
 }

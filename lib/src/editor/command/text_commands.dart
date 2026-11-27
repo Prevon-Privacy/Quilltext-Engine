@@ -60,6 +60,14 @@ extension TextTransforms on EditorState {
       attributes[blockComponentTextDirection] = textDirection;
     }
 
+    // Children that move to the new row keep their fold: a folded row's hidden
+    // rows must not pop open (and the old row must not stay flagged folded
+    // with nothing to fold).
+    if (children.isNotEmpty && blockHidesChildren(node)) {
+      attributes[blockComponentCollapsed] = true;
+      transaction.updateNode(node, {blockComponentCollapsed: false});
+    }
+
     final insertedNode = paragraphNode(
       attributes: attributes,
       children: children,

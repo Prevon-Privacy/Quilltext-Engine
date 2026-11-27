@@ -227,6 +227,18 @@ void main() {
   }
 
   group('named cases', () {
+    test('Enter in a folded bullet keeps its children folded on the new row',
+        () async {
+      final s = doc([
+        b('A', [b('hidden')])..updateAttributes({blockComponentCollapsed: true}),
+      ]);
+      s.selection = Selection.collapsed(Position(path: [0], offset: 1));
+      await s.insertNewLine(nodeBuilder: (x) => x.copyWith(type: BulletedListBlockKeys.type));
+      expect(read(s), ['A@0', '@0', 'hidden@1']);
+      expect(s.getNodeAtPath([1])!.attributes[blockComponentCollapsed], true);
+      expect(s.getNodeAtPath([0])!.attributes[blockComponentCollapsed], isNot(true));
+    });
+
     test('a same-level drag keeps the caret on its text', () {
       final s = doc([p('A'), p('B'), p('C')]);
       s.selection = Selection.collapsed(Position(path: [2], offset: 1));
