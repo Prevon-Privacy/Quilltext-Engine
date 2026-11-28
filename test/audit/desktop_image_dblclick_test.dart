@@ -78,9 +78,9 @@ void main() {
   desktopTest('a fast second click on a picture opens it again',
       (tester) async {
     final (actions, state) = await pump(tester);
-    final r = (state.getNodeAtPath([1])!.selectable
-            as ImageBlockComponentWidgetState)
-        .imageGlobalRect!;
+    final r =
+        (state.getNodeAtPath([1])!.selectable as ImageBlockComponentWidgetState)
+            .imageGlobalRect!;
     await doubleClick(tester, r.center);
     expect(actions.opened, hasLength(2));
     expect(state.selection?.start.path, [1]);

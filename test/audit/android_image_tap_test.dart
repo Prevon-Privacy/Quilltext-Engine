@@ -77,11 +77,12 @@ void main() {
     return box.localToGlobal(Offset(4, box.size.height / 2));
   }
 
-  phoneTest('a second tap on a selected picture opens it again', (tester) async {
+  phoneTest('a second tap on a selected picture opens it again',
+      (tester) async {
     final (actions, state) = await pump(tester);
-    final r = (state.getNodeAtPath([1])!.selectable
-            as ImageBlockComponentWidgetState)
-        .imageGlobalRect!;
+    final r =
+        (state.getNodeAtPath([1])!.selectable as ImageBlockComponentWidgetState)
+            .imageGlobalRect!;
     for (var i = 1; i <= 2; i++) {
       await tester.tapAt(r.center);
       await _frames(tester);
@@ -89,12 +90,13 @@ void main() {
     expect(actions.opened, hasLength(2));
   });
 
-  phoneTest('a slow second tap on a selected picture opens it and nothing throws',
+  phoneTest(
+      'a slow second tap on a selected picture opens it and nothing throws',
       (tester) async {
     final (actions, state) = await pump(tester);
-    final r = (state.getNodeAtPath([1])!.selectable
-            as ImageBlockComponentWidgetState)
-        .imageGlobalRect!;
+    final r =
+        (state.getNodeAtPath([1])!.selectable as ImageBlockComponentWidgetState)
+            .imageGlobalRect!;
     for (var i = 0; i < 2; i++) {
       await tester.tapAt(r.center);
       await _frames(tester);

@@ -155,8 +155,8 @@ void main() {
         ),
       ),
     ));
-    final g = await tester.startGesture(
-        tester.getCenter(find.byType(ColumnWidthResizer)));
+    final g = await tester
+        .startGesture(tester.getCenter(find.byType(ColumnWidthResizer)));
     await g.moveBy(const Offset(30, 0));
     await tester.pump();
     await g.moveBy(const Offset(30, 0));
@@ -202,8 +202,7 @@ void main() {
     expect(normalizeTypedLink('javascript:alert(1)'), isNull);
   });
 
-  test('7 Backspace at an empty first block removes it, caret to the next',
-      () {
+  test('7 Backspace at an empty first block removes it, caret to the next', () {
     final s = _columnsState([
       ['', 'next'],
       ['b'],
@@ -217,7 +216,8 @@ void main() {
         s.selection, Selection.collapsed(Position(path: [0, 0, 0], offset: 0)));
   });
 
-  test('3b a file after a non-empty last paragraph leaves a paragraph with the caret',
+  test(
+      '3b a file after a non-empty last paragraph leaves a paragraph with the caret',
       () async {
     final s = EditorState(
       document: Document.blank()..insert([0], [paragraphNode(text: 'x')]),
@@ -276,6 +276,7 @@ void main() {
     await tester.enterText(find.byType(TextFormField), '  example.com ');
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
-    expect(_ops(state).first.attributes?['href'], startsWith('https://example.com'));
+    expect(_ops(state).first.attributes?['href'],
+        startsWith('https://example.com'));
   });
 }

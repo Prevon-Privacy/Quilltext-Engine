@@ -77,7 +77,8 @@ void main() {
       expect(_caretText(s), 'b1');
     });
 
-    test('delete the caret row: lands in the row that took its place', () async {
+    test('delete the caret row: lands in the row that took its place',
+        () async {
       final s = _state();
       _caret(s, 1, 0, 2);
       TableActions.delete(_table(s), 0, s, TableDirection.row);

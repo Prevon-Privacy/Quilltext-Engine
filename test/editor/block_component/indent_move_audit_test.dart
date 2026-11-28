@@ -101,7 +101,10 @@ List<Node> seedBlocks(Random r) {
     final t = 'r${k++}';
     final kids = depth == 0
         ? <Node>[]
-        : [for (var i = 0; i < r.nextInt(3); i++) r.nextBool() ? tree(depth - 1) : leaf()];
+        : [
+            for (var i = 0; i < r.nextInt(3); i++)
+              r.nextBool() ? tree(depth - 1) : leaf()
+          ];
     return switch (r.nextInt(4)) {
       0 => n(t, kids),
       1 => todo(t, kids),
@@ -110,7 +113,8 @@ List<Node> seedBlocks(Random r) {
   }
 
   return [
-    for (var i = 0; i < 4 + r.nextInt(4); i++) r.nextInt(3) == 0 ? leaf() : tree(2),
+    for (var i = 0; i < 4 + r.nextInt(4); i++)
+      r.nextInt(3) == 0 ? leaf() : tree(2),
   ];
 }
 
@@ -129,7 +133,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   for (var seed = 0; seed < 80; seed++) {
-    test('indent/outdent/move session $seed keeps order, ids, caret and undo exact',
+    test(
+        'indent/outdent/move session $seed keeps order, ids, caret and undo exact',
         () async {
       final r = Random(26110 + seed);
       final s = doc(seedBlocks(r));
@@ -137,7 +142,11 @@ void main() {
       final log = <String>[];
       final errors = <String>[];
       await runZonedGuarded(() async {
-        for (var i = 0; i < 40 && errors.isEmpty && s.undoManager.undoStack.toList().length < 18; i++) {
+        for (var i = 0;
+            i < 40 &&
+                errors.isEmpty &&
+                s.undoManager.undoStack.toList().length < 18;
+            i++) {
           final all = flat(s);
           final pick = all[r.nextInt(all.length)];
           final len = pick.delta?.length ?? 0;
@@ -149,15 +158,16 @@ void main() {
               end: Position(path: other.path, offset: 0),
             );
           } else {
-            s.selection = Selection.collapsed(
-                Position(path: pick.path, offset: len == 0 ? 0 : r.nextInt(len + 1)));
+            s.selection = Selection.collapsed(Position(
+                path: pick.path, offset: len == 0 ? 0 : r.nextInt(len + 1)));
           }
           final op = r.nextInt(8);
           final beforeOrder = order(s);
           final beforeIds = ids(s);
           final beforeCaret = caretText(s);
           final undoBefore = s.undoManager.undoStack.toList().length;
-          log.add('op$op sel=${s.selection?.start.path}:${s.selection?.start.offset}-${s.selection?.end.path} doc=${read(s).join(',')}');
+          log.add(
+              'op$op sel=${s.selection?.start.path}:${s.selection?.start.offset}-${s.selection?.end.path} doc=${read(s).join(',')}');
           var keepsOrder = false;
           switch (op) {
             case 0:
@@ -196,7 +206,9 @@ void main() {
           }
           if (op == 7) continue;
           final grew = s.undoManager.undoStack.toList().length - undoBefore;
-          if (grew > 1) errors.add('step $i (${log.last}): one command made $grew undo steps');
+          if (grew > 1)
+            errors.add(
+                'step $i (${log.last}): one command made $grew undo steps');
           if (ids(s).toSet().length != beforeIds.toSet().length) {
             errors.add('step $i (${log.last}): block ids changed');
           }
@@ -204,13 +216,16 @@ void main() {
             errors.add('step $i (${log.last}): reading order changed\n'
                 '  before ${beforeOrder.join(',')}\n  after  ${order(s).join(',')}');
           }
-          if (keepsOrder && selectionStaysPut(beforeCaret) && caretText(s) != beforeCaret) {
+          if (keepsOrder &&
+              selectionStaysPut(beforeCaret) &&
+              caretText(s) != beforeCaret) {
             errors.add('step $i (${log.last}): caret moved off its text '
                 '$beforeCaret -> ${caretText(s)}');
           }
         }
         var g = 0;
-        while (errors.isEmpty && s.undoManager.undoStack.isNonEmpty && g++ < 400) {
+        while (
+            errors.isEmpty && s.undoManager.undoStack.isNonEmpty && g++ < 400) {
           s.undoManager.undo();
           await Future<void>.delayed(Duration.zero);
           final v = violation(s);
@@ -230,13 +245,16 @@ void main() {
     test('Enter in a folded bullet keeps its children folded on the new row',
         () async {
       final s = doc([
-        b('A', [b('hidden')])..updateAttributes({blockComponentCollapsed: true}),
+        b('A', [b('hidden')])
+          ..updateAttributes({blockComponentCollapsed: true}),
       ]);
       s.selection = Selection.collapsed(Position(path: [0], offset: 1));
-      await s.insertNewLine(nodeBuilder: (x) => x.copyWith(type: BulletedListBlockKeys.type));
+      await s.insertNewLine(
+          nodeBuilder: (x) => x.copyWith(type: BulletedListBlockKeys.type));
       expect(read(s), ['A@0', '@0', 'hidden@1']);
       expect(s.getNodeAtPath([1])!.attributes[blockComponentCollapsed], true);
-      expect(s.getNodeAtPath([0])!.attributes[blockComponentCollapsed], isNot(true));
+      expect(s.getNodeAtPath([0])!.attributes[blockComponentCollapsed],
+          isNot(true));
     });
 
     test('a same-level drag keeps the caret on its text', () {
@@ -250,13 +268,18 @@ void main() {
     test('indent and outdent keep a caret in a later block on its text', () {
       final s = doc([b('A'), b('B'), b('C')]);
       s.selection = Selection.collapsed(Position(path: [2], offset: 1));
-      indentBlocks(s, [s.getNodeAtPath([1])!]);
+      indentBlocks(s, [
+        s.getNodeAtPath([1])!
+      ]);
       expect(caretText(s), 'C@1');
-      outdentBlocks(s, [s.getNodeAtPath([0, 0])!]);
+      outdentBlocks(s, [
+        s.getNodeAtPath([0, 0])!
+      ]);
       expect(caretText(s), 'C@1');
     });
 
-    test('Delete at the end of a heading does not bury the next row\'s children',
+    test(
+        'Delete at the end of a heading does not bury the next row\'s children',
         () {
       final s = doc([
         headingNode(level: 2, text: 'H'),
@@ -268,9 +291,11 @@ void main() {
           reason: 'a heading draws no children: they must not nest under it');
     });
 
-    test('Delete at the end of a folded title does not pull in a hidden row', () {
+    test('Delete at the end of a folded title does not pull in a hidden row',
+        () {
       final s = doc([
-        b('A', [b('hidden')])..updateAttributes({blockComponentCollapsed: true}),
+        b('A', [b('hidden')])
+          ..updateAttributes({blockComponentCollapsed: true}),
         b('B'),
       ]);
       s.selection = Selection.collapsed(Position(path: [0], offset: 1));
@@ -280,7 +305,8 @@ void main() {
 
     test('Backspace after a folded block merges into its visible title', () {
       final s = doc([
-        b('A', [b('hidden')])..updateAttributes({blockComponentCollapsed: true}),
+        b('A', [b('hidden')])
+          ..updateAttributes({blockComponentCollapsed: true}),
         p('P'),
       ]);
       s.selection = Selection.collapsed(Position(path: [1], offset: 0));
@@ -308,7 +334,9 @@ void main() {
           b('S1'),
         ]),
       ]);
-      outdentBlocks(s, [s.getNodeAtPath([0, 0])!]);
+      outdentBlocks(s, [
+        s.getNodeAtPath([0, 0])!
+      ]);
       expect(read(s), ['A@0', 'T@0', 't1@1', 'S1@0']);
     });
 
@@ -318,7 +346,8 @@ void main() {
       expect(order(s), ['B', 'C', 'A', 'D']);
     });
 
-    test('moveBlockTo into a later sibling lands at the slot, caret follows', () {
+    test('moveBlockTo into a later sibling lands at the slot, caret follows',
+        () {
       final s = doc([
         b('A'),
         b('B', [b('b0'), b('b1')]),
@@ -337,11 +366,13 @@ void main() {
       s.selection = Selection.collapsed(Position(path: [1], offset: 1));
       indentCommand.execute(s);
       expect(read(s), ['A@0', 'a1@1', 'B@1']);
-      expect(s.getNodeAtPath([0])!.attributes[blockComponentCollapsed], isNot(true),
+      expect(s.getNodeAtPath([0])!.attributes[blockComponentCollapsed],
+          isNot(true),
           reason: 'the moved row would be hidden with the caret inside it');
     });
 
-    test('Shift+Tab with a range from a nested row to a top-level row outdents the nested part',
+    test(
+        'Shift+Tab with a range from a nested row to a top-level row outdents the nested part',
         () {
       final s = doc([
         b('A', [b('x'), b('y')]),

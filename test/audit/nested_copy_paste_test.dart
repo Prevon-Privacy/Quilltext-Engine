@@ -13,8 +13,8 @@ EditorState _state(List<Node> rows) {
 }
 
 String _shape(Iterable<Node> nodes, [String pad = '']) => nodes
-    .map((n) =>
-        '$pad${n.delta?.toPlainText()}\n${_shape(n.children, '$pad  ')}')
+    .map(
+        (n) => '$pad${n.delta?.toPlainText()}\n${_shape(n.children, '$pad  ')}')
     .join();
 
 List<Node> _hello() => [
@@ -118,7 +118,8 @@ void main() {
     expect(s.document.toJson().toString(), start);
   });
 
-  test('7 cut of a nested selection: copy text matches what delete removes', () async {
+  test('7 cut of a nested selection: copy text matches what delete removes',
+      () async {
     final s = _state([
       _b('Alpha', [_b('Bravo'), _b('Charlie')]),
     ]);
@@ -135,7 +136,8 @@ void main() {
     expect(s.document.root.children.first.delta!.toPlainText(), 'Aavo');
   });
 
-  test('8 pasted last row with children: text after the caret and old children follow its deepest row',
+  test(
+      '8 pasted last row with children: text after the caret and old children follow its deepest row',
       () async {
     final s = _state(_hello());
     s.selection = Selection.collapsed(Position(path: [0], offset: 5));

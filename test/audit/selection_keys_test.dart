@@ -34,7 +34,8 @@ Future<EditorState> _pump(WidgetTester tester, List<Node> top) async {
 }
 
 void main() {
-  test('deleteSelection ending inside a nested row keeps the unselected sibling',
+  test(
+      'deleteSelection ending inside a nested row keeps the unselected sibling',
       () async {
     final s = _doc([
       paragraphNode(text: 'start'),
@@ -53,7 +54,8 @@ void main() {
     expect(_read(s), before);
   });
 
-  test('range ending two levels deep keeps B12 and B2 in reading order', () async {
+  test('range ending two levels deep keeps B12 and B2 in reading order',
+      () async {
     final s = _doc([
       paragraphNode(text: 'start'),
       _b('B', [
@@ -74,7 +76,8 @@ void main() {
   });
 
   for (final backward in [false, true]) {
-    test('first selected row is the parent of the last: no duplicate sibling '
+    test(
+        'first selected row is the parent of the last: no duplicate sibling '
         '(${backward ? 'backward' : 'forward'})', () async {
       final s = _doc([
         _b('Alpha', [_b('Bravo'), _b('Charlie')]),
@@ -129,8 +132,8 @@ void main() {
 
   testWidgets('word-jump at block edges moves to the neighbour block',
       (tester) async {
-    final s = await _pump(tester,
-        [paragraphNode(text: 'one two'), paragraphNode(text: 'three')]);
+    final s = await _pump(
+        tester, [paragraphNode(text: 'one two'), paragraphNode(text: 'three')]);
     s.selection = Selection.collapsed(Position(path: [1], offset: 0));
     await tester.pump();
     moveCursorToLeftWordCommand.execute(s);

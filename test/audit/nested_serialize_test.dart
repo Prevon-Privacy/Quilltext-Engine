@@ -30,7 +30,8 @@ void main() {
         bulletedListNode(
           text: 'a',
           children: <Node>[
-            bulletedListNode(text: 'b', children: <Node>[bulletedListNode(text: 'c')]),
+            bulletedListNode(
+                text: 'b', children: <Node>[bulletedListNode(text: 'c')]),
           ],
         ),
         bulletedListNode(text: 'd'),
@@ -51,7 +52,8 @@ void main() {
         bulletedListNode(
           text: 'a',
           children: <Node>[
-            numNode(text: 'b',
+            numNode(
+              text: 'b',
               children: <Node>[todoListNode(checked: true, text: 'c')],
             ),
           ],
@@ -69,8 +71,11 @@ void main() {
 
     test('export wraps a child list item in its own ul', () {
       final doc = Document.blank(withInitialText: false)
-        ..insert([0], [
-          bulletedListNode(text: 'a', children: <Node>[bulletedListNode(text: 'b')]),
+        ..insert([
+          0
+        ], [
+          bulletedListNode(
+              text: 'a', children: <Node>[bulletedListNode(text: 'b')]),
         ]);
       expect(documentToHTML(doc), contains('<ul><li>b</li></ul>'));
     });
@@ -98,7 +103,8 @@ void main() {
   });
 
   group('Node', () {
-    test('a lazy children iterable is consumed once and parents are linked', () {
+    test('a lazy children iterable is consumed once and parents are linked',
+        () {
       var pulls = 0;
       Iterable<Node> lazy() => [1, 2, 3].map((i) {
             pulls++;
@@ -134,14 +140,23 @@ void main() {
     });
 
     test('list, lazy iterable and fromJson build the same tree', () {
-      Node leaf(String t, String id) => Node(type: 'p', id: id, attributes: {'t': t});
+      Node leaf(String t, String id) =>
+          Node(type: 'p', id: id, attributes: {'t': t});
       final ids = [newBlockId(), newBlockId(), newBlockId()];
-      final fromList = Node(type: 'r', children: [for (var i = 0; i < 3; i++) leaf('$i', ids[i])]);
-      final fromLazy = Node(type: 'r', children: [0, 1, 2].map((i) => leaf('$i', ids[i])));
+      final fromList = Node(
+          type: 'r',
+          children: [for (var i = 0; i < 3; i++) leaf('$i', ids[i])]);
+      final fromLazy =
+          Node(type: 'r', children: [0, 1, 2].map((i) => leaf('$i', ids[i])));
       final fromJson = Node.fromJson({
         'type': 'r',
         'children': [
-          for (var i = 0; i < 3; i++) {'type': 'p', 'id': ids[i], 'data': {'t': '$i'}},
+          for (var i = 0; i < 3; i++)
+            {
+              'type': 'p',
+              'id': ids[i],
+              'data': {'t': '$i'}
+            },
         ],
       });
       for (final n in [fromList, fromLazy, fromJson]) {
