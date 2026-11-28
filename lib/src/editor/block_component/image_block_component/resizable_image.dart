@@ -410,11 +410,14 @@ class ResizableImageState extends State<ResizableImage> {
     } else if (blur && !_pictureRevealed) {
       child = _buildHiddenPicture(context, provider, width);
     } else {
-      final media = MediaQuery.maybeOf(context);
+      // Only size and pixel ratio: the whole MediaQuery changes on every frame
+      // the keyboard slides, which rebuilt every picture in the note.
+      final screenSize = MediaQuery.maybeSizeOf(context);
+      final pixelRatio = MediaQuery.maybeDevicePixelRatioOf(context);
       // Decoded once at the widest the screen can show, never per drag frame.
-      final decodeWidth = media == null
+      final decodeWidth = screenSize == null || pixelRatio == null
           ? null
-          : (media.size.width * media.devicePixelRatio).round();
+          : (screenSize.width * pixelRatio).round();
       child = Image(
         image: decodeWidth == null
             ? provider
